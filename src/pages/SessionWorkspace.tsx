@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Session } from "../models/types";
 import { SessionManager } from "../services/SessionManager";
@@ -98,7 +98,6 @@ export const SessionWorkspace: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const { showToast, ToastContainer } = useToast();
-  const hasAutoCreatedRef = useRef(false);
 
   // Core state
   const [session, setSession] = useState<Session | null>(null);
@@ -219,19 +218,13 @@ export const SessionWorkspace: React.FC = () => {
     }
 
     if (sessionId && sessionId !== "new") {
-      hasAutoCreatedRef.current = false;
       // Load existing session
       console.log("📂 Loading existing session:", sessionId);
       loadSession(sessionId);
     } else if (sessionId === "new" || !sessionId) {
       // Auto-create session when navigating to /session/new OR when no sessionId
       console.log("🆕 Auto-creating new session (sessionId:", sessionId, ")");
-      if (hasAutoCreatedRef.current) {
-        console.log("✅ Auto-create already triggered, skipping duplicate creation");
-      } else {
-        hasAutoCreatedRef.current = true;
-        createNewSession();
-      }
+      createNewSession();
     }
 
     // Load templates
