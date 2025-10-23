@@ -171,7 +171,7 @@ export class ExportService {
 
     // Documentation
     if (options.includeDocumentation) {
-      lines.push(...this.formatSOAPNoteAsText(session, options));
+      lines.push(...this.formatSOAPNoteAsText(session));
     }
 
     // Transcript
@@ -660,8 +660,7 @@ ${textContent}`;
    * Format SOAP note as text
    */
   private formatSOAPNoteAsText(
-    session: Session,
-    options: ExportOptions
+    session: Session
   ): string[] {
     const lines: string[] = [];
     const soap = session.documentation.soapNote;

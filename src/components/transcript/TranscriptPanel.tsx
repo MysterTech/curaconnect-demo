@@ -17,6 +17,7 @@ interface TranscriptBubbleProps {
   segment: TranscriptSegment;
   showTimestamp: boolean;
   labelMode?: 'role' | 'generic';
+  showSpeakerLabel?: boolean;
   onClick?: (segment: TranscriptSegment) => void;
 }
 
@@ -24,6 +25,7 @@ const TranscriptBubble: React.FC<TranscriptBubbleProps> = ({
   segment,
   showTimestamp,
   labelMode = 'role',
+  showSpeakerLabel = true,
   onClick
 }) => {
   const getSpeakerColor = (speaker: string) => {
@@ -80,28 +82,35 @@ const TranscriptBubble: React.FC<TranscriptBubbleProps> = ({
     }
   };
 
+  const speakerClasses = getSpeakerColor(segment.speaker);
+  const speakerLabel = getSpeakerLabel(segment.speaker);
+  const isInteractive = Boolean(onClick);
+
   return (
     <div
-      className={`flex items-start space-x-3 p-4 rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-200 ${onClick ? 'cursor-pointer hover:shadow-sm hover:bg-gray-100' : ''}`}
+      className={`flex items-start space-x-3 p-4 rounded-lg border transition-colors duration-200 ${speakerClasses} ${isInteractive ? 'cursor-pointer hover:shadow-sm' : ''}`}
       onClick={() => onClick?.(segment)}
     >
-      {/* Timestamp badge */}
-      <div className="flex-shrink-0">
-        <div className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-md text-xs font-medium">
-          {formatTimestamp(segment.timestamp)}
+      {showTimestamp && (
+        <div className="flex-shrink-0">
+          <div className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-md text-xs font-medium">
+            {formatTimestamp(segment.timestamp)}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
-        {/* Text content */}
+        {showSpeakerLabel && (
+          <div className="flex items-center space-x-2 text-xs font-medium text-gray-700 mb-1">
+            <span className="text-current">{getSpeakerIcon(segment.speaker)}</span>
+            <span>{speakerLabel}</span>
+          </div>
+        )}
         <p className="text-sm leading-relaxed break-words text-gray-900">
           {segment.text}
         </p>
-        
-        {/* Confidence indicator (optional) */}
         {segment.confidence !== undefined && segment.confidence < 0.8 && (
-          <span className="text-xs text-gray-400 mt-1 inline-block">
+          <span className="text-xs text-gray-500 mt-1 inline-block">
             Low confidence: {Math.round((segment.confidence || 0) * 100)}%
           </span>
         )}
@@ -115,7 +124,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   isLive = false,
   autoScroll = true,
   showTimestamps = true,
-  showSpeakerLabels: _showSpeakerLabels = true,
+  showSpeakerLabels = true,
   labelMode = 'role',
   onSegmentClick,
   className = ''
@@ -232,6 +241,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                   segment={segment}
                   showTimestamp={showTimestamps}
                   labelMode={labelMode}
+                  showSpeakerLabel={showSpeakerLabels}
                   onClick={onSegmentClick}
                 />
               ))}

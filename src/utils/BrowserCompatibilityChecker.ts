@@ -134,6 +134,31 @@ export class BrowserCompatibilityChecker {
   }
 
   /**
+   * Return a list of supported mime types for MediaRecorder
+   */
+  getSupportedMimeTypes(): string[] {
+    if (typeof window === 'undefined' || !window.MediaRecorder) {
+      return [];
+    }
+
+    const mimeTypes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/ogg',
+      'audio/mp4'
+    ];
+
+    return mimeTypes.filter(type => {
+      try {
+        return MediaRecorder.isTypeSupported(type);
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  /**
    * Get browser name
    */
   private getBrowserName(): string {
@@ -163,3 +188,5 @@ export class BrowserCompatibilityChecker {
     return match ? match[2] : 'Unknown';
   }
 }
+
+export const browserCompatibilityChecker = new BrowserCompatibilityChecker();

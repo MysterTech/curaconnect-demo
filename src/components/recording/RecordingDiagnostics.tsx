@@ -83,9 +83,9 @@ export const RecordingDiagnostics: React.FC<RecordingDiagnosticsProps> = ({
                   <div>
                     <span className="text-sm text-gray-700">Missing Features:</span>
                     <ul className="list-disc list-inside ml-4 text-sm text-red-600">
-                      {diagnosticReport.browserSupport.missingFeatures.map(feature => (
-                        <li key={feature}>{feature}</li>
-                      ))}
+                {diagnosticReport.browserSupport.missingFeatures.map((feature: string) => (
+                  <li key={feature}>{feature}</li>
+                ))}
                     </ul>
                   </div>
                 )}
@@ -93,9 +93,9 @@ export const RecordingDiagnostics: React.FC<RecordingDiagnosticsProps> = ({
                   <div>
                     <span className="text-sm text-gray-700">Warnings:</span>
                     <ul className="list-disc list-inside ml-4 text-sm text-yellow-600">
-                      {diagnosticReport.browserSupport.warnings.map((warning, index) => (
-                        <li key={index}>{warning}</li>
-                      ))}
+                {diagnosticReport.browserSupport.warnings.map((warning: string, index: number) => (
+                  <li key={index}>{warning}</li>
+                ))}
                     </ul>
                   </div>
                 )}
@@ -157,8 +157,8 @@ export const RecordingDiagnostics: React.FC<RecordingDiagnosticsProps> = ({
               <h4 className="font-medium text-gray-900 mb-3">Available Devices</h4>
               {diagnosticReport.deviceInfo.availableDevices.length > 0 ? (
                 <ul className="space-y-2">
-                  {diagnosticReport.deviceInfo.availableDevices.map((device, index) => (
-                    <li key={device.deviceId} className="text-sm">
+                  {diagnosticReport.deviceInfo.availableDevices.map((device: MediaDeviceInfo, index: number) => (
+                    <li key={device.deviceId || index} className="text-sm">
                       <div className="flex items-center justify-between">
                         <span className="text-gray-700">
                           {device.label || `Microphone ${index + 1}`}
@@ -182,7 +182,7 @@ export const RecordingDiagnostics: React.FC<RecordingDiagnosticsProps> = ({
               <div className="bg-blue-50 rounded-lg p-4">
                 <h4 className="font-medium text-blue-900 mb-3">Recommendations</h4>
                 <ul className="list-disc list-inside space-y-1">
-                  {diagnosticReport.recommendations.map((recommendation, index) => (
+                  {diagnosticReport.recommendations.map((recommendation: string, index: number) => (
                     <li key={index} className="text-sm text-blue-800">{recommendation}</li>
                   ))}
                 </ul>

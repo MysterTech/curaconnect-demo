@@ -1,5 +1,7 @@
 // Jest setup file for testing environment
 
+import type { Session } from './models/types';
+
 // Mock IndexedDB for testing
 import 'fake-indexeddb/auto';
 
@@ -88,8 +90,12 @@ afterEach(() => {
   console.error = originalConsoleError;
 });
 
+const globalAny = globalThis as typeof globalThis & {
+  createMockSession: (overrides?: Partial<Session>) => Session;
+};
+
 // Global test utilities
-global.createMockSession = (overrides = {}) => ({
+globalAny.createMockSession = (overrides = {}) => ({
   id: 'test-session-1',
   createdAt: new Date('2025-01-01T10:00:00Z'),
   updatedAt: new Date('2025-01-01T10:30:00Z'),

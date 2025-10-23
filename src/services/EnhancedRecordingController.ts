@@ -1,6 +1,6 @@
 import { RecordingController } from './RecordingController';
 import { RecordingManager } from './RecordingManager';
-import { RecordingState } from '../models/types';
+import { browserCompatibilityChecker } from '../utils/BrowserCompatibilityChecker';
 import type {
   InitializationResult,
   RecoveryResult,
@@ -13,11 +13,8 @@ import type {
 } from '../utils/types';
 
 export class EnhancedRecordingController extends RecordingController {
-  private recordingManager: RecordingManager;
-
   constructor(recordingManager?: RecordingManager) {
     super(recordingManager);
-    this.recordingManager = recordingManager || new RecordingManager();
   }
 
   /**
@@ -298,7 +295,8 @@ export class EnhancedRecordingController extends RecordingController {
       apiSupport,
       permissionState,
       availableDevices,
-      currentDevice
+      currentDevice,
+      supportedMimeTypes: browserCompatibilityChecker.getSupportedMimeTypes()
     };
   }
 
@@ -330,15 +328,4 @@ export class EnhancedRecordingController extends RecordingController {
     return match ? match[2] : 'Unknown';
   }
 
-  /**
-   * Check browser support
-   */
-  private checkBrowserSupport(): boolean {
-    return !!(
-      navigator.mediaDevices &&
-      typeof navigator.mediaDevices.getUserMedia === 'function' &&
-      window.MediaRecorder &&
-      (window.AudioContext || (window as any).webkitAudioContext)
-    );
-  }
 }

@@ -127,8 +127,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
           <button
             onClick={() => {
-              // Navigate to settings
-              window.location.href = '/settings';
+              navigate('/settings');
+              if (window.innerWidth < 1024) {
+                onToggle();
+              }
             }}
             className="w-full flex items-center hover:bg-gray-50 rounded-lg p-2 transition-colors"
           >

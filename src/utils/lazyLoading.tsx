@@ -33,12 +33,19 @@ export const withLazyLoading = <P extends object>(
   fallback: React.ComponentType = ComponentLoadingFallback
 ) => {
   const LazyComponent = lazy(importFunc);
-  
-  return (props: P) => (
-    <Suspense fallback={<fallback />}>
-      <LazyComponent {...props} />
-    </Suspense>
-  );
+
+  const FallbackComponent = fallback;
+
+  const WrappedComponent: React.FC<P> = (props) => {
+    const ComponentWithProps = LazyComponent as unknown as ComponentType<P>;
+    return (
+      <Suspense fallback={<FallbackComponent />}>
+        <ComponentWithProps {...props} />
+      </Suspense>
+    );
+  };
+
+  return WrappedComponent;
 };
 
 // Lazy loaded page components
@@ -122,26 +129,27 @@ export class ComponentPreloader {
   /**
    * Preload components based on user interaction patterns
    */
-  static preloadOnHover(componentName: string, importFunc: () => Promise<any>): () => void {
-    let timeoutId: NodeJS.Timeout;
+  static preloadOnHover(componentName: string, importFunc: () => Promise<any>) {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const handleMouseEnter = () => {
+    const cancel = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const onMouseEnter = () => {
+      cancel();
       timeoutId = setTimeout(() => {
         this.preload(componentName, importFunc);
-      }, 200); // Small delay to avoid preloading on accidental hovers
+        timeoutId = null;
+      }, 200);
     };
 
-    const handleMouseLeave = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    };
+    const onMouseLeave = cancel;
 
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    };
+    return { onMouseEnter, onMouseLeave, cancel };
   }
 }
 
@@ -151,17 +159,17 @@ export const LazyRoute: React.FC<{
   fallback?: React.ComponentType;
   preload?: boolean;
 }> = ({ component: Component, fallback = PageLoadingFallback, preload = false }) => {
+  // Preload hint is currently unused but kept for API compatibility
   React.useEffect(() => {
     if (preload) {
-      // Preload the component when the route wrapper mounts
-      Component._payload._result?.catch(() => {
-        // Component is already loaded or loading
-      });
+      // Intentionally left blank; hook retained for future enhancement
     }
-  }, [Component, preload]);
+  }, [preload]);
+
+  const FallbackComponent = fallback;
 
   return (
-    <Suspense fallback={<fallback />}>
+    <Suspense fallback={<FallbackComponent />}>
       <Component />
     </Suspense>
   );
@@ -265,10 +273,14 @@ export const BundleAnalyzer = {
   logBundleInfo: () => {
     if (process.env.NODE_ENV === 'development') {
       console.group('📦 Bundle Information');
+      const anyWindow = window as typeof window & {
+        webpackChunkName?: unknown;
+        __webpack_require__?: unknown;
+      };
       
       // Log loaded chunks
-      if ('webpackChunkName' in window) {
-        console.log('Loaded chunks:', (window as any).webpackChunkName);
+      if (anyWindow.webpackChunkName) {
+        console.log('Loaded chunks:', anyWindow.webpackChunkName);
       }
       
       // Log performance metrics
@@ -290,7 +302,8 @@ export const BundleAnalyzer = {
    */
   monitorChunkLoading: () => {
     if (process.env.NODE_ENV === 'development') {
-      const originalImport = window.__webpack_require__;
+      const anyWindow = window as typeof window & { __webpack_require__?: unknown };
+      const originalImport = anyWindow.__webpack_require__;
       if (originalImport) {
         // This would require webpack configuration to expose chunk loading
         console.log('Chunk loading monitoring enabled');

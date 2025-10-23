@@ -94,6 +94,7 @@ export interface DiagnosticInfo {
   permissionState: PermissionState;
   availableDevices: MediaDeviceInfo[];
   currentDevice: MediaDeviceInfo | null;
+  supportedMimeTypes: string[];
 }
 
 export interface DiagnosticReport {

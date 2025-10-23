@@ -280,10 +280,14 @@ export class AudioVisualizationService {
     if (!this.analyserNode) return;
 
     // Get frequency data
-    this.analyserNode.getFloatFrequencyData(this.currentData.frequencyData);
+    const frequencyBuffer = new Float32Array(this.currentData.frequencyData.length);
+    this.analyserNode.getFloatFrequencyData(frequencyBuffer);
+    this.currentData.frequencyData.set(frequencyBuffer);
 
     // Get time domain data (waveform)
-    this.analyserNode.getFloatTimeDomainData(this.currentData.waveformData);
+    const waveformBuffer = new Float32Array(this.currentData.waveformData.length);
+    this.analyserNode.getFloatTimeDomainData(waveformBuffer);
+    this.currentData.waveformData.set(waveformBuffer);
 
     // Calculate audio metrics
     this.calculateAudioMetrics();

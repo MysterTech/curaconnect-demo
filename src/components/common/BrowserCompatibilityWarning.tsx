@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CompatibilityResult, BrowserRecommendation } from '../../utils/BrowserCompatibilityChecker';
+import type { BrowserFeature, CompatibilityResult } from '../../utils/types';
 
 interface BrowserCompatibilityWarningProps {
   compatibilityResult: CompatibilityResult;
@@ -71,7 +71,7 @@ export const BrowserCompatibilityWarning: React.FC<BrowserCompatibilityWarningPr
               <div className="mt-2">
                 <p className="font-medium">Missing features:</p>
                 <ul className="list-disc list-inside mt-1">
-                  {unsupportedFeatures.map((feature, index) => (
+                  {unsupportedFeatures.map((feature: BrowserFeature, index: number) => (
                     <li key={index}>{feature}</li>
                   ))}
                 </ul>
@@ -82,7 +82,7 @@ export const BrowserCompatibilityWarning: React.FC<BrowserCompatibilityWarningPr
               <div className="mt-2">
                 <p className="font-medium">Warnings:</p>
                 <ul className="list-disc list-inside mt-1">
-                  {warnings.map((warning, index) => (
+                  {warnings.map((warning: string, index: number) => (
                     <li key={index}>{warning}</li>
                   ))}
                 </ul>

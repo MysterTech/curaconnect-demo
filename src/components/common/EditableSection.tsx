@@ -35,7 +35,7 @@ export const EditableSection: React.FC<EditableSectionProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout>();
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Update edit content when prop content changes
   useEffect(() => {

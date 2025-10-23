@@ -18,10 +18,7 @@ import { TranscriptView } from "../components/TranscriptView";
 import { ContextView } from "../components/ContextView";
 import { RecordingButton } from "../components/RecordingButton";
 import { useToast } from "../components/Toast";
-import {
-  transcriptAnalyzer,
-  TranscriptAnalysisResult,
-} from "../services/TranscriptAnalyzer";
+import { transcriptAnalyzer } from "../services/TranscriptAnalyzer";
 import { Task } from "../components/TasksPanel";
 
 // Reuse the RecentSessionsList component from original file
@@ -137,11 +134,14 @@ export const SessionWorkspaceNew: React.FC = () => {
   const [sessionListRefresh, setSessionListRefresh] = useState(0);
 
   // Services
+  const [recordingController] = useState(
+    () => new EnhancedRecordingController()
+  );
   const [sessionManager] = useState(
     () =>
       new SessionManager(
         new StorageService(),
-        new EnhancedRecordingController(),
+        recordingController,
         new TranscriptionServiceManager(),
         new DocumentationGenerator()
       )
@@ -256,7 +256,7 @@ export const SessionWorkspaceNew: React.FC = () => {
 
   // Update duration timer
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     if (isRecording && recordingStartTime) {
       interval = setInterval(() => {

@@ -298,8 +298,8 @@ export class SessionManager implements SessionManagerInterface {
   private documentationGenerator: DocumentationGenerator;
 
   private activeSession: Session | null = null;
-  private autoSaveTimer: NodeJS.Timeout | null = null;
-  private chunkTranscriptionTimer: NodeJS.Timeout | null = null;
+  private autoSaveTimer: ReturnType<typeof setInterval> | null = null;
+  private chunkTranscriptionTimer: ReturnType<typeof setInterval> | null = null;
   private lastTranscribedAudioSize: number = 0; // Track what we've already transcribed
   private config: Required<SessionManagerConfig> = {
     autoSaveInterval: 5000, // 5 seconds

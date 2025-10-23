@@ -1,11 +1,11 @@
 import { 
   TranscriptionServiceInterface, 
   TranscriptionResult, 
-  TranscriptionConfig,
   WebSpeechTranscriptionService,
   MockTranscriptionService
 } from './TranscriptionService';
 import { WhisperTranscriptionService } from './WhisperTranscriptionService';
+import type { WhisperConfig } from './WhisperTranscriptionService';
 import { GeminiTranscriptionService } from './GeminiTranscriptionService';
 import { SpeakerDiarizationService } from './SpeakerDiarizationService';
 import { TranscriptSegment } from '../models/types';
@@ -104,7 +104,7 @@ export class TranscriptionServiceManager {
   /**
    * Add Whisper service with API key
    */
-  async addWhisperService(apiKey: string, config?: Partial<TranscriptionConfig>): Promise<void> {
+  async addWhisperService(apiKey: string, config?: Partial<WhisperConfig>): Promise<void> {
     try {
       const whisperService = new WhisperTranscriptionService({ 
         apiKey, 
@@ -126,8 +126,9 @@ export class TranscriptionServiceManager {
         isAvailable: true
       });
     } catch (error) {
-      this.logError('whisper', 'initialization', error, false);
-      throw error;
+      const typedError = error instanceof Error ? error : new Error('Whisper initialization failed');
+      this.logError('whisper', 'initialization', typedError, false);
+      throw typedError;
     }
   }
 
@@ -265,8 +266,9 @@ export class TranscriptionServiceManager {
           resolve(result);
         })
         .catch(error => {
+          const typedError = error instanceof Error ? error : new Error('Transcription failed');
           clearTimeout(timeout);
-          reject(error);
+          reject(typedError);
         });
     });
   }

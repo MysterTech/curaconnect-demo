@@ -141,7 +141,7 @@ export class SpeakerDiarizationService {
 
     // Temporal analysis (conversation flow)
     if (this.config.enableTemporalAnalysis && context.length > 0) {
-      const temporalScores = this.analyzeTemporalPatterns(segment, context);
+      const temporalScores = this.analyzeTemporalPatterns(context);
       scores.provider += temporalScores.provider * 0.3;
       scores.patient += temporalScores.patient * 0.3;
     }
@@ -265,7 +265,6 @@ export class SpeakerDiarizationService {
    * Analyze temporal conversation patterns
    */
   private analyzeTemporalPatterns(
-    segment: TranscriptSegment, 
     context: TranscriptSegment[]
   ): { provider: number; patient: number } {
     const scores = { provider: 0, patient: 0 };

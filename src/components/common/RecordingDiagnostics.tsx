@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DiagnosticReport } from '../../services/RecordingController';
+import type { DiagnosticReport } from '../../utils/types';
 
 interface RecordingDiagnosticsProps {
   isOpen: boolean;
@@ -93,11 +93,11 @@ export const RecordingDiagnostics: React.FC<RecordingDiagnosticsProps> = ({
                   <div>
                     <dt className="font-medium text-gray-700">Compatible:</dt>
                     <dd className="text-gray-900">
-                      {diagnosticReport.browserSupport.isCompatible ? (
-                        <span className="text-green-600 font-medium">Yes</span>
-                      ) : (
-                        <span className="text-red-600 font-medium">No</span>
-                      )}
+                    {diagnosticReport.browserSupport.supported ? (
+                      <span className="text-green-600 font-medium">Yes</span>
+                    ) : (
+                      <span className="text-red-600 font-medium">No</span>
+                    )}
                     </dd>
                   </div>
                   <div>
@@ -131,7 +131,7 @@ export const RecordingDiagnostics: React.FC<RecordingDiagnosticsProps> = ({
                 <h3 className="text-lg font-medium text-gray-900 mb-3">Audio Devices</h3>
                 {diagnosticReport.deviceInfo.availableDevices.length > 0 ? (
                   <ul className="space-y-2">
-                    {diagnosticReport.deviceInfo.availableDevices.map((device, index) => (
+                    {diagnosticReport.deviceInfo.availableDevices.map((device: MediaDeviceInfo, index: number) => (
                       <li key={index} className="flex items-center text-sm">
                         <svg className="w-4 h-4 text-gray-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
@@ -153,7 +153,7 @@ export const RecordingDiagnostics: React.FC<RecordingDiagnosticsProps> = ({
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h3 className="text-lg font-medium text-gray-900 mb-3">Supported Audio Formats</h3>
                   <div className="flex flex-wrap gap-2">
-                    {diagnosticReport.deviceInfo.supportedMimeTypes.map((type, index) => (
+                    {diagnosticReport.deviceInfo.supportedMimeTypes.map((type: string, index: number) => (
                       <span key={index} className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded">
                         {type}
                       </span>
@@ -172,7 +172,7 @@ export const RecordingDiagnostics: React.FC<RecordingDiagnosticsProps> = ({
                     Recommendations
                   </h3>
                   <ul className="space-y-2">
-                    {diagnosticReport.recommendations.map((rec, index) => (
+                    {diagnosticReport.recommendations.map((rec: string, index: number) => (
                       <li key={index} className="text-sm text-yellow-800 flex items-start">
                         <span className="mr-2">•</span>
                         <span>{rec}</span>

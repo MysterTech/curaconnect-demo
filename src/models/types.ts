@@ -48,6 +48,7 @@ export interface ClinicalDocumentation {
   clinicalEntities: ClinicalEntity[];
   lastUpdated: Date;
   isFinalized: boolean;
+  clinicalNote?: string;
 }
 
 export interface SOAPNote {
@@ -86,6 +87,8 @@ export interface VitalSigns {
   temperature?: number;
   respiratoryRate?: number;
   oxygenSaturation?: number;
+  weight?: number;
+  height?: number;
 }
 
 export interface Medication {

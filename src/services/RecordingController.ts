@@ -1,36 +1,15 @@
-import { RecordingManager, RecordingManagerInterface, DiagnosticInfo, MicrophoneTestResult } from './RecordingManager';
+import { RecordingManager } from './RecordingManager';
 import { RecordingState } from '../models/types';
-import { RecordingError, RecordingPermissionError } from '../utils/recordingErrors';
 import { recordingErrorHandler } from '../utils/RecordingErrorHandler';
 import { browserCompatibilityChecker } from '../utils/BrowserCompatibilityChecker';
-
-export interface InitializationResult {
-  success: boolean;
-  errors: string[];
-  warnings: string[];
-  canProceed: boolean;
-}
-
-export interface RecoveryResult {
-  recovered: boolean;
-  action: 'retry' | 'reset' | 'manual_intervention';
-  message: string;
-}
-
-export interface DiagnosticReport {
-  timestamp: Date;
-  browserSupport: any;
-  permissionState: string;
-  deviceInfo: DiagnosticInfo;
-  recommendations: string[];
-}
-
-export interface AudioDevice {
-  deviceId: string;
-  label: string;
-  isDefault: boolean;
-  isAvailable: boolean;
-}
+import type {
+  AudioDevice,
+  BrowserSupportResult,
+  DiagnosticReport,
+  InitializationResult,
+  MicrophoneTestResult,
+  RecoveryResult
+} from '../utils/types';
 
 export interface RecordingControllerInterface {
   initialize(): Promise<void>;
@@ -46,7 +25,7 @@ export interface RecordingControllerInterface {
 }
 
 export class RecordingController implements RecordingControllerInterface {
-  private recordingManager: RecordingManager;
+  protected recordingManager: RecordingManager;
   private stateChangeCallbacks: ((state: RecordingState) => void)[] = [];
   private errorCallbacks: ((error: Error) => void)[] = [];
   private isInitialized = false;
@@ -305,7 +284,7 @@ export class RecordingController implements RecordingControllerInterface {
   /**
    * Check if browser supports required APIs
    */
-  private checkBrowserSupport(): boolean {
+  protected checkBrowserSupport(): boolean {
     return !!(
       navigator.mediaDevices &&
       typeof navigator.mediaDevices.getUserMedia === "function" &&
@@ -438,7 +417,7 @@ export class RecordingController implements RecordingControllerInterface {
   /**
    * Recover from an error
    */
-  async recoverFromError(error: RecordingError): Promise<RecoveryResult> {
+  async recoverFromError(error: Error): Promise<RecoveryResult> {
     const recoveryAction = recordingErrorHandler.getRecoveryAction(error);
 
     try {
@@ -472,7 +451,7 @@ export class RecordingController implements RecordingControllerInterface {
           // Permission needs to be requested manually
           return {
             recovered: false,
-            action: 'manual_intervention',
+            action: 'request_permission',
             message: 'Please grant microphone permission in your browser settings'
           };
 
@@ -480,7 +459,7 @@ export class RecordingController implements RecordingControllerInterface {
           // Device needs to be changed
           return {
             recovered: false,
-            action: 'manual_intervention',
+            action: 'change_device',
             message: 'Please check your microphone connection or select a different device'
           };
 
@@ -504,12 +483,21 @@ export class RecordingController implements RecordingControllerInterface {
    * Run diagnostics
    */
   async runDiagnostics(): Promise<DiagnosticReport> {
-    const browserSupport = this.recordingManager.checkBrowserSupport();
+    const compatibility = this.recordingManager.checkBrowserSupport();
     const deviceInfo = await this.recordingManager.getDiagnosticInfo();
+
+    const browserSupport: BrowserSupportResult = {
+      supported: compatibility.isCompatible,
+      missingFeatures: compatibility.unsupportedFeatures,
+      warnings: compatibility.warnings,
+      recommendedBrowsers: browserCompatibilityChecker
+        .getRecommendedBrowsers()
+        .map((browser) => `${browser.name} ${browser.minVersion}+`)
+    };
+
     const recommendations: string[] = [];
 
-    // Generate recommendations
-    if (!browserSupport.isCompatible) {
+    if (!browserSupport.supported) {
       recommendations.push('Update your browser or use a supported browser (Chrome 90+, Firefox 88+, Safari 14+, Edge 90+)');
     }
 
@@ -559,9 +547,6 @@ export class RecordingController implements RecordingControllerInterface {
    * Test an audio device
    */
   async testAudioDevice(deviceId: string): Promise<MicrophoneTestResult> {
-    // Temporarily set the device
-    const originalDevice = this.recordingManager.getRecordingState();
-    
     try {
       await this.setAudioDevice(deviceId);
       return await this.recordingManager.testMicrophone();

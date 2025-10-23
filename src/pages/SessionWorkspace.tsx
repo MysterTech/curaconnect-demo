@@ -7,9 +7,8 @@ import { EnhancedRecordingController } from "../services/EnhancedRecordingContro
 import { TranscriptionServiceManager } from "../services/TranscriptionServiceManager";
 import { DocumentationGenerator } from "../services/DocumentationGenerator";
 import { userSettingsService } from "../services/UserSettingsService";
-import { getTemplatesBySpecialty, getTemplateById, NoteTemplate } from "../models/templates";
+import { getTemplatesBySpecialty, NoteTemplate } from "../models/templates";
 import { clinicalEntityExtractor, ClinicalEntity, SOAPElements } from "../services/ClinicalEntityExtractor";
-import { useToast } from "../components/Toast";
 
 type TabType = "transcript" | "context" | "note" | "entities";
 
@@ -204,8 +203,6 @@ export const SessionWorkspace: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("note");
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState("00:00");
-  const [showRecordingDropdown, setShowRecordingDropdown] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
   const [hasStartedSession, setHasStartedSession] = useState(false);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const [patientDetails, setPatientDetails] = useState("");
@@ -229,14 +226,17 @@ export const SessionWorkspace: React.FC = () => {
     height: '',
   });
 
-  const [sessionManager] = useState(() => 
+  const [recordingController] = useState(() => new EnhancedRecordingController());
+  const [sessionManager] = useState(() =>
     new SessionManager(
       new StorageService(),
-      new EnhancedRecordingController(),
+      recordingController,
       new TranscriptionServiceManager(),
       new DocumentationGenerator()
     )
   );
+
+  const transcriptSegments = session?.transcript ?? [];
 
   useEffect(() => {
     if (sessionId && sessionId !== 'new' && sessionId !== 'test-session') {
@@ -280,7 +280,7 @@ export const SessionWorkspace: React.FC = () => {
 
   // Update duration timer while recording
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
     
     if (isRecording && recordingStartTime) {
       interval = setInterval(() => {
@@ -409,7 +409,7 @@ export const SessionWorkspace: React.FC = () => {
     }
   };
 
-  const startRecording = async (mode: 'transcribing' | 'invoicing' | 'upload') => {
+  const startRecording = async () => {
     let currentSession = session;
     
     if (!currentSession) {
@@ -432,7 +432,6 @@ export const SessionWorkspace: React.FC = () => {
         await sessionManager.startSession(currentSession.id);
         setIsRecording(true);
         setHasStartedSession(true);
-        setShowRecordingDropdown(false);
         setRecordingStartTime(Date.now());
         setDuration("0:00");
       } catch (error) {
@@ -457,14 +456,8 @@ export const SessionWorkspace: React.FC = () => {
     }
   };
 
-  const formatDuration = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   const generateNoteFromTranscript = async () => {
-    if (!session || !selectedTemplate || !session.transcript || session.transcript.length === 0) {
+    if (!session || !selectedTemplate || transcriptSegments.length === 0) {
       console.log('Cannot generate note: missing session, template, or transcript');
       alert('Please select a template and ensure you have a transcript before generating a note.');
       return;
@@ -475,7 +468,7 @@ export const SessionWorkspace: React.FC = () => {
       console.log('🤖 Generating note using template:', selectedTemplate.name);
       
       // Combine all transcript segments into one text
-      const fullTranscript = session.transcript
+      const fullTranscript = transcriptSegments
         .map(seg => `${seg.speaker}: ${seg.text}`)
         .join('\n');
 
@@ -572,7 +565,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
 
   // Extract clinical entities when transcript updates
   const extractClinicalEntities = async () => {
-    if (!session || !session.transcript || session.transcript.length === 0) {
+    if (!session || transcriptSegments.length === 0) {
       return;
     }
 
@@ -580,7 +573,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
       setExtractingEntities(true);
       console.log('🔍 Extracting clinical entities...');
 
-      const fullTranscript = session.transcript
+      const fullTranscript = transcriptSegments
         .map(seg => seg.text)
         .join(' ');
 
@@ -603,7 +596,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
 
   // Auto-generate note when transcript updates (if template is selected)
   useEffect(() => {
-    if (session && session.transcript && session.transcript.length > 0) {
+    if (transcriptSegments.length > 0) {
       // Debounce: only generate after transcript stops updating for 5 seconds
       const timer = setTimeout(() => {
         if (selectedTemplate && !generatedNote) {
@@ -615,7 +608,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
       
       return () => clearTimeout(timer);
     }
-  }, [session?.transcript, selectedTemplate]);
+  }, [session?.transcript, selectedTemplate, generatedNote]);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -778,7 +771,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
             <div className="flex items-center space-x-3">
               {!isRecording ? (
                 <button
-                  onClick={() => startRecording('transcribing')}
+                  onClick={() => startRecording()}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center space-x-2"
                 >
                   <span>▶ Start transcribing</span>
@@ -922,7 +915,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
                   </p>
                   
                   <button
-                    onClick={() => startRecording('transcribing')}
+                    onClick={() => startRecording()}
                     className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center space-x-2"
                   >
                     <span>▶ Start transcribing</span>
@@ -1011,7 +1004,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
                     </div>
 
                     {/* Medical Documentation */}
-                    {generatedNote || session?.transcript?.length > 0 ? (
+                    {generatedNote || transcriptSegments.length > 0 ? (
                       <div className="space-y-4">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center space-x-2">
@@ -1025,7 +1018,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
                             )}
                           </div>
                           <div className="flex items-center space-x-2">
-                            {session?.transcript && session.transcript.length > 0 && (
+                            {transcriptSegments.length > 0 && (
                               <button
                                 onClick={generateNoteFromTranscript}
                                 disabled={!selectedTemplate || generatingNote}
@@ -1046,7 +1039,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
                                 )}
                               </button>
                             )}
-                            {!selectedTemplate && session?.transcript && session.transcript.length > 0 && (
+                            {!selectedTemplate && transcriptSegments.length > 0 && (
                               <button
                                 onClick={() => setShowTemplateDropdown(true)}
                                 className="text-sm text-indigo-600 hover:text-indigo-700"
@@ -1110,9 +1103,9 @@ Start recording to generate a note, or type your own notes here..."
                 {activeTab === "transcript" && (
                   <div className="space-y-4">
                     <h3 className="font-semibold text-gray-900">Transcript</h3>
-                    {session?.transcript && session.transcript.length > 0 ? (
+                    {transcriptSegments.length > 0 ? (
                       <div className="space-y-3">
-                        {session.transcript.map((segment) => (
+                        {transcriptSegments.map((segment) => (
                           <div key={segment.id} className="p-3 bg-gray-50 rounded-lg">
                             <div className="text-xs text-gray-500 mb-1">
                               {segment.speaker === "provider" ? "Provider" : "Patient"}
@@ -1363,7 +1356,7 @@ Start recording to generate a note, or type your own notes here..."
                       <h3 className="font-semibold text-gray-900">Clinical Entities</h3>
                       <button
                         onClick={extractClinicalEntities}
-                        disabled={extractingEntities || !session?.transcript || session.transcript.length === 0}
+                        disabled={extractingEntities || transcriptSegments.length === 0}
                         className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center space-x-1 disabled:opacity-50"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { userSettingsService, UserSettings } from '../services/UserSettingsService';
 import { SPECIALTY_LABELS, MedicalSpecialty, getTemplatesBySpecialty } from '../models/templates';
 

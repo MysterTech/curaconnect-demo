@@ -23,7 +23,7 @@ export class AudioMonitor {
   private lastAudioTime: number = Date.now();
   private warnings: AudioWarning[] = [];
   private warningCallbacks: ((warning: AudioWarning) => void)[] = [];
-  private checkIntervalId: NodeJS.Timeout | null = null;
+  private checkIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(config?: Partial<AudioMonitorConfig>) {
     this.config = {

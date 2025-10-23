@@ -13,7 +13,7 @@ export class SimpleRecorder {
   private mediaStream: MediaStream | null = null;
   private chunks: Blob[] = [];
   private startTime: number = 0;
-  private durationInterval: number | null = null;
+  private durationInterval: ReturnType<typeof setInterval> | null = null;
   private onStateChange: ((state: SimpleRecordingState) => void) | null = null;
 
   /**

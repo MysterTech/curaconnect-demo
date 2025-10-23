@@ -99,6 +99,7 @@ export interface TranscriptionServiceInterface {
   isSupported(): boolean;
   getConfig(): TranscriptionConfig;
   updateConfig(config: Partial<TranscriptionConfig>): void;
+  dispose(): Promise<void>;
 }
 
 export abstract class BaseTranscriptionService implements TranscriptionServiceInterface {

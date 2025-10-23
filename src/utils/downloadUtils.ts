@@ -32,7 +32,7 @@ export function downloadTranscriptAsText(session: Session): void {
   
   // Add transcript segments
   if (session.transcript && session.transcript.length > 0) {
-    session.transcript.forEach((segment, index) => {
+    session.transcript.forEach((segment) => {
       const timestamp = new Date(segment.timestamp * 1000).toISOString().substr(11, 8);
       content += `[${timestamp}] ${segment.speaker.toUpperCase()}: ${segment.text}\n\n`;
     });

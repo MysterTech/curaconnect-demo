@@ -69,11 +69,12 @@ export const ActiveSessionEnhanced: React.FC = () => {
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Services
+  const [recordingController] = useState(() => new EnhancedRecordingController());
   const [sessionManager] = useState(() => {
     console.log('🏗️ Creating SessionManager instance');
     const manager = new SessionManager(
       new StorageService(),
-      new EnhancedRecordingController(),
+      recordingController,
       new TranscriptionServiceManager(),
       new DocumentationGenerator()
     );
@@ -444,10 +445,7 @@ export const ActiveSessionEnhanced: React.FC = () => {
 
   const handleRunDiagnostics = async () => {
     try {
-      const controller = sessionManager[
-        "recordingController"
-      ] as EnhancedRecordingController;
-      const report = await controller.runDiagnostics();
+      const report = await recordingController.runDiagnostics();
       setDiagnosticReport(report);
       setShowDiagnostics(true);
     } catch (err) {
@@ -486,11 +484,6 @@ export const ActiveSessionEnhanced: React.FC = () => {
       // Force new object reference so React detects the change
       setSession({ ...updatedSession, transcript: [...updatedSession.transcript] });
       console.log('✅ UI state updated with new session (forced new reference)');
-    };
-
-    const handleRecordingStateChange = (state: RecordingState) => {
-      console.log('🎙️ Recording state changed:', state);
-      setRecordingState(state);
     };
 
     const handleError = (error: Error) => {

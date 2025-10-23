@@ -132,7 +132,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   // Auto-remove notifications
   React.useEffect(() => {
-    const timers: NodeJS.Timeout[] = [];
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
 
     state.notifications.forEach(notification => {
       if (notification.autoClose !== false) {

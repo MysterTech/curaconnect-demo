@@ -18,8 +18,10 @@ export class MemoryCache<T> {
   set(key: string, data: T, ttl?: number): void {
     // Remove oldest entries if cache is full
     if (this.cache.size >= this.maxSize) {
-      const oldestKey = this.cache.keys().next().value;
-      this.cache.delete(oldestKey);
+      const iterator = this.cache.keys().next();
+      if (!iterator.done) {
+        this.cache.delete(iterator.value);
+      }
     }
 
     this.cache.set(key, {
@@ -77,7 +79,7 @@ export class BatchProcessor {
   private operations: Array<() => Promise<any>> = [];
   private batchSize: number;
   private processingDelay: number;
-  private timeout: NodeJS.Timeout | null = null;
+  private timeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(batchSize: number = 10, processingDelay: number = 100) {
     this.batchSize = batchSize;
@@ -226,7 +228,7 @@ export class OptimizedIndexedDB {
     });
   }
 
-  async getAll<T>(storeName: string, useCache: boolean = false): Promise<T[]> {
+  async getAll<T>(storeName: string): Promise<T[]> {
     // For getAll, we typically don't cache due to size
     const db = await this.connect();
     const transaction = db.transaction([storeName], 'readonly');

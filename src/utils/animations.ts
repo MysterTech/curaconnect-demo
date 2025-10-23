@@ -279,7 +279,7 @@ export const performanceUtils = {
    * Debounce function for animation triggers
    */
   debounce: (func: Function, wait: number) => {
-    let timeout: NodeJS.Timeout;
+    let timeout: ReturnType<typeof setTimeout>;
     return function executedFunction(...args: any[]) {
       const later = () => {
         clearTimeout(timeout);
@@ -294,12 +294,14 @@ export const performanceUtils = {
    * Throttle function for scroll animations
    */
   throttle: (func: Function, limit: number) => {
-    let inThrottle: boolean;
-    return function executedFunction(...args: any[]) {
+    let inThrottle = false;
+    return (...args: any[]) => {
       if (!inThrottle) {
-        func.apply(this, args);
+        func(...args);
         inThrottle = true;
-        setTimeout(() => inThrottle = false, limit);
+        setTimeout(() => {
+          inThrottle = false;
+        }, limit);
       }
     };
   },

@@ -1,36 +1,9 @@
 import { RecordingState } from "../models/types";
 import { PermissionManager } from "../utils/PermissionManager";
-import type { PermissionState } from "../utils/types";
-import {
-  RecordingPermissionError,
-  RecordingDeviceError,
-  NoAudioDeviceError,
-} from "../utils/recordingErrors";
+import type { PermissionState, MicrophoneTestResult, DiagnosticInfo } from "../utils/types";
+import { RecordingPermissionError } from "../utils/recordingErrors";
 import { BrowserCompatibilityChecker } from "../utils/BrowserCompatibilityChecker";
-import type { BrowserSupportResult, CompatibilityResult } from "../utils/types";
-
-export interface MicrophoneTestResult {
-  success: boolean;
-  audioLevel: number;
-  deviceInfo: MediaDeviceInfo | null;
-  error?: string;
-}
-export interface DiagnosticInfo {
-  browserInfo: {
-    name: string;
-    version: string;
-    platform: string;
-  };
-  apiSupport: {
-    getUserMedia: boolean;
-    mediaRecorder: boolean;
-    audioContext: boolean;
-  };
-  permissionState: PermissionState;
-  availableDevices: MediaDeviceInfo[];
-  currentDevice: MediaDeviceInfo | null;
-  supportedMimeTypes: string[];
-}
+import type { CompatibilityResult } from "../utils/types";
 
 export interface RecordingManagerInterface {
   startRecording(): Promise<void>;
@@ -729,6 +702,7 @@ export class RecordingManager implements RecordingManagerInterface {
         name: browserInfo.name,
         version: browserInfo.version,
         platform: browserInfo.platform,
+        userAgent: browserInfo.userAgent,
       },
       apiSupport: {
         getUserMedia: checker.checkFeature("getUserMedia"),

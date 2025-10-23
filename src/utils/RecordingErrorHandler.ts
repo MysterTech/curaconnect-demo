@@ -9,8 +9,6 @@ import {
   RecordingInitializationError,
   BrowserCompatibilityError,
   RecordingDeviceError,
-  NoAudioDeviceError,
-  RecordingStateError,
   RecordingNetworkError,
   ErrorCategory,
   RecoveryAction

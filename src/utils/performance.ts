@@ -10,7 +10,7 @@ export const debounce = <T extends (...args: any[]) => any>(
   wait: number,
   immediate?: boolean
 ): ((...args: Parameters<T>) => void) => {
-  let timeout: NodeJS.Timeout | null = null;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
   
   return (...args: Parameters<T>) => {
     const later = () => {
@@ -84,7 +84,7 @@ export const useThrottle = <T extends (...args: any[]) => any>(
 // Optimized update batching for real-time data
 export class UpdateBatcher<T> {
   private updates: T[] = [];
-  private batchTimeout: NodeJS.Timeout | null = null;
+  private batchTimeout: ReturnType<typeof setTimeout> | null = null;
   private readonly batchSize: number;
   private readonly batchDelay: number;
   private readonly onBatch: (updates: T[]) => void;
@@ -286,7 +286,7 @@ export class PerformanceMonitor {
     if (process.env.NODE_ENV === 'development') {
       console.group('⚡ Performance Measurements');
       
-      for (const [name, measurements] of this.measurements) {
+      for (const name of this.measurements.keys()) {
         const stats = this.getMeasurements(name);
         console.log(`${name}:`, {
           count: stats.count,
@@ -402,7 +402,7 @@ export const useOptimizedState = <T>(
 ) => {
   const [state, setState] = useState<T>(initialState);
   const pendingUpdate = useRef<T | null>(null);
-  const updateTimeout = useRef<NodeJS.Timeout | null>(null);
+  const updateTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const optimizedSetState = useCallback((newState: T | ((prev: T) => T)) => {
     const resolvedState = typeof newState === 'function' 

@@ -15,7 +15,7 @@ interface TasksPanelProps {
   onTasksChange: (tasks: Task[]) => void;
 }
 
-export const TasksPanel: React.FC<TasksPanelProps> = ({ sessionId, tasks, onTasksChange }) => {
+export const TasksPanel: React.FC<TasksPanelProps> = ({ sessionId: _sessionId, tasks, onTasksChange }) => {
   const [newTaskText, setNewTaskText] = useState('');
   const [isAddingTask, setIsAddingTask] = useState(false);
 

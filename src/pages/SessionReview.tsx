@@ -7,7 +7,7 @@ import { TranscriptPanel } from '../components/transcript/TranscriptPanel';
 import { StorageService } from '../services/StorageService';
 import { ExportService } from '../services/ExportService';
 import { formatDuration, formatDate } from '../utils/transformations';
-import { downloadTranscriptAsText, downloadAudio } from '../utils/downloadUtils';
+import { downloadTranscriptAsText } from '../utils/downloadUtils';
 
 export const SessionReview: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();

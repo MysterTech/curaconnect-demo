@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PermissionState, PermissionInstructions } from '../../services/PermissionManager';
+import type { PermissionState, PermissionInstructions } from '../../utils/types';
 
 interface PermissionPromptProps {
   isOpen: boolean;
@@ -59,7 +59,7 @@ export const PermissionPrompt: React.FC<PermissionPromptProps> = ({
                 How to enable microphone access in {instructions.browser}:
               </h4>
               <ol className="list-decimal list-inside text-sm text-gray-700 space-y-2">
-                {instructions.steps.map((step, index) => (
+                {instructions.steps.map((step: string, index: number) => (
                   <li key={index}>{step}</li>
                 ))}
               </ol>
