@@ -35,15 +35,90 @@ export interface StorageServiceInterface {
 }
 
 export class StorageService implements StorageServiceInterface {
+  private static useMemoryStorage = false;
+  private static memoryStore = new Map<string, Session>();
+  private static initialized = false;
+  private static readonly MEMORY_KEY = "medical_scribe_memory_sessions";
+
+  private async ensureStorage(): Promise<void> {
+    if (StorageService.initialized) return;
+    StorageService.initialized = true;
+
+    try {
+      const db = await getDatabase();
+      const transaction = createTransaction(db, STORES.SESSIONS, "readonly");
+      transaction.abort();
+    } catch (error) {
+      console.warn(
+        "[StorageService] IndexedDB unavailable, switching to in-memory storage.",
+        error
+      );
+      StorageService.useMemoryStorage = true;
+      StorageService.hydrateMemoryStore();
+    }
+  }
+
+  private static hydrateMemoryStore(): void {
+    if (typeof localStorage === "undefined") return;
+    try {
+      const raw = localStorage.getItem(StorageService.MEMORY_KEY);
+      if (!raw) return;
+      const parsed: Session[] = JSON.parse(raw);
+      parsed.forEach((session) => {
+        StorageService.memoryStore.set(session.id, session);
+      });
+    } catch (error) {
+      console.warn("Failed to hydrate memory store", error);
+      StorageService.memoryStore.clear();
+    }
+  }
+
+  private static persistMemoryStore(): void {
+    if (typeof localStorage === "undefined") return;
+    try {
+      const payload = JSON.stringify(Array.from(StorageService.memoryStore.values()));
+      localStorage.setItem(StorageService.MEMORY_KEY, payload);
+    } catch (error) {
+      console.warn("Failed to persist memory store", error);
+    }
+  }
+
+  private fromMemory(session: Session | undefined | null): Session | null {
+    if (!session) return null;
+    return {
+      ...session,
+      createdAt: new Date(session.createdAt),
+      updatedAt: new Date(session.updatedAt),
+      documentation: {
+        ...session.documentation,
+        lastUpdated: new Date(session.documentation.lastUpdated),
+      },
+    };
+  }
+
+  private cloneForMemory(session: Session): Session {
+    return JSON.parse(JSON.stringify(session));
+  }
   /**
    * Save a new session or update an existing one
    */
   async saveSession(session: Session): Promise<void> {
+    await this.ensureStorage();
+
     try {
       // Validate session data before saving
       const validationErrors = validateSession(session);
       if (validationErrors.length > 0) {
         throw new Error(`Invalid session data: ${validationErrors.join(", ")}`);
+      }
+
+      if (StorageService.useMemoryStorage) {
+        StorageService.memoryStore.set(
+          session.id,
+          this.cloneForMemory(session)
+        );
+        StorageService.persistMemoryStore();
+        return;
       }
 
       const db = await getDatabase();
@@ -79,9 +154,15 @@ export class StorageService implements StorageServiceInterface {
    * Retrieve a session by its ID
    */
   async getSession(sessionId: string): Promise<Session | null> {
+    await this.ensureStorage();
+
     try {
       if (!sessionId || typeof sessionId !== "string") {
         throw new Error("Session ID is required and must be a string");
+      }
+
+      if (StorageService.useMemoryStorage) {
+        return this.fromMemory(StorageService.memoryStore.get(sessionId));
       }
 
       const db = await getDatabase();
@@ -113,7 +194,15 @@ export class StorageService implements StorageServiceInterface {
    * Retrieve all sessions
    */
   async getAllSessions(): Promise<Session[]> {
+    await this.ensureStorage();
+
     try {
+      if (StorageService.useMemoryStorage) {
+        return Array.from(StorageService.memoryStore.values()).map((session) =>
+          this.fromMemory(session) as Session
+        );
+      }
+
       const db = await getDatabase();
       const transaction = createTransaction(db, STORES.SESSIONS, "readonly");
       const store = transaction.objectStore(STORES.SESSIONS);
@@ -144,6 +233,8 @@ export class StorageService implements StorageServiceInterface {
     sessionId: string,
     updates: Partial<Session>
   ): Promise<void> {
+    await this.ensureStorage();
+
     try {
       if (!sessionId || typeof sessionId !== "string") {
         throw new Error("Session ID is required and must be a string");
@@ -181,9 +272,17 @@ export class StorageService implements StorageServiceInterface {
    * Delete a session by its ID
    */
   async deleteSession(sessionId: string): Promise<void> {
+    await this.ensureStorage();
+
     try {
       if (!sessionId || typeof sessionId !== "string") {
         throw new Error("Session ID is required and must be a string");
+      }
+
+      if (StorageService.useMemoryStorage) {
+        StorageService.memoryStore.delete(sessionId);
+        StorageService.persistMemoryStore();
+        return;
       }
 
       const db = await getDatabase();
@@ -312,6 +411,11 @@ export class StorageService implements StorageServiceInterface {
    * Clear session from any in-memory caches
    */
   private clearSessionFromCache(sessionId: string): void {
+    if (StorageService.useMemoryStorage) {
+      StorageService.memoryStore.delete(sessionId);
+      StorageService.persistMemoryStore();
+    }
+
     // Clear from session storage if used
     try {
       sessionStorage.removeItem(`session_${sessionId}`);
@@ -330,7 +434,15 @@ export class StorageService implements StorageServiceInterface {
    * Delete all sessions (use with caution)
    */
   async clearAllSessions(): Promise<void> {
+    await this.ensureStorage();
+
     try {
+      if (StorageService.useMemoryStorage) {
+        StorageService.memoryStore.clear();
+        StorageService.persistMemoryStore();
+        return;
+      }
+
       const db = await getDatabase();
       const transaction = createTransaction(db, STORES.SESSIONS, "readwrite");
       const store = transaction.objectStore(STORES.SESSIONS);
