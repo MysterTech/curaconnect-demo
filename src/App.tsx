@@ -11,7 +11,6 @@ import { SimpleRecordingPage } from './pages/SimpleRecordingPage';
 import { SessionReview } from './pages/SessionReview';
 import { SessionHistory } from './pages/SessionHistory';
 import { SessionWorkspace } from './pages/SessionWorkspace';
-import { SessionWorkspaceNew } from './pages/SessionWorkspaceNew';
 import { Settings } from './pages/Settings';
 import './App.css';
 
@@ -34,17 +33,12 @@ function App() {
                 <Route path="/" element={<Dashboard />} />
                 
                 {/* Session routes - Now using new Workspace UI */}
-                <Route path="/session/new" element={<SessionWorkspaceNew />} />
-                <Route path="/session/:sessionId" element={<SessionWorkspaceNew />} />
+                <Route path="/session/new" element={<SessionWorkspace />} />
+                <Route path="/session/:sessionId" element={<SessionWorkspace />} />
                 <Route path="/session/:sessionId/review" element={<SessionReview />} />
                 <Route path="/sessions" element={<SessionHistory />} />
                 
                 {/* Workspace UI (same as session routes) */}
-                <Route path="/workspace/:sessionId" element={<SessionWorkspaceNew />} />
-                
-                {/* Old workspace for comparison */}
-                <Route path="/session-old/:sessionId" element={<SessionWorkspace />} />
-                
                 {/* Legacy routes for backward compatibility */}
                 <Route path="/session-old/:sessionId" element={<ActiveSessionUpdated />} />
                 

@@ -13,9 +13,15 @@ interface TasksPanelProps {
   sessionId?: string;
   tasks: Task[];
   onTasksChange: (tasks: Task[]) => void;
+  variant?: 'desktop' | 'mobile';
 }
 
-export const TasksPanel: React.FC<TasksPanelProps> = ({ sessionId: _sessionId, tasks, onTasksChange }) => {
+export const TasksPanel: React.FC<TasksPanelProps> = ({
+  sessionId: _sessionId,
+  tasks,
+  onTasksChange,
+  variant = 'desktop'
+}) => {
   const [newTaskText, setNewTaskText] = useState('');
   const [isAddingTask, setIsAddingTask] = useState(false);
 
@@ -54,9 +60,18 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({ sessionId: _sessionId, t
     }
   };
 
+  const containerClasses =
+    variant === 'desktop'
+      ? 'w-80 bg-white border-l border-gray-200 flex flex-col h-full'
+      : 'w-full bg-white border border-gray-200 rounded-lg flex flex-col';
+
+  const headerPadding = variant === 'desktop' ? 'p-4' : 'px-4 py-3';
+  const bodyPadding = variant === 'desktop' ? 'p-4' : 'px-4 py-4';
+  const footerPadding = variant === 'desktop' ? 'p-4' : 'px-4 py-3';
+
   return (
-    <div className="w-80 bg-white border-l border-gray-200 flex flex-col h-full">
-      <div className="p-4 border-b border-gray-200">
+    <div className={containerClasses}>
+      <div className={`${headerPadding} border-b border-gray-200`}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-900">Tasks</h2>
           <button className="text-gray-400 hover:text-gray-600">
@@ -68,7 +83,7 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({ sessionId: _sessionId, t
         <span className="text-xs text-gray-500">A total</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className={`flex-1 overflow-y-auto ${bodyPadding} space-y-3`}>
         {tasks.map((task) => (
           <div
             key={task.id}
@@ -145,7 +160,7 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({ sessionId: _sessionId, t
         )}
       </div>
 
-      <div className="p-4 border-t border-gray-200">
+      <div className={`${footerPadding} border-t border-gray-200`}>
         <p className="text-xs text-gray-500 text-center">
           Tasks will be archived in 30 days
         </p>

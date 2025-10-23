@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Session } from "../models/types";
 import { SessionManager } from "../services/SessionManager";
@@ -8,57 +8,60 @@ import { TranscriptionServiceManager } from "../services/TranscriptionServiceMan
 import { DocumentationGenerator } from "../services/DocumentationGenerator";
 import { userSettingsService } from "../services/UserSettingsService";
 import { getTemplatesBySpecialty, NoteTemplate } from "../models/templates";
-import { clinicalEntityExtractor, ClinicalEntity, SOAPElements } from "../services/ClinicalEntityExtractor";
+import { HeaderBar } from "../components/HeaderBar";
+import { TabNavigation, TabType } from "../components/TabNavigation";
+import { TasksPanel } from "../components/TasksPanel";
+import { AIInputBar } from "../components/AIInputBar";
+import { TemplateSelector } from "../components/TemplateSelector";
+import { NoteDisplay } from "../components/NoteDisplay";
+import { TranscriptView } from "../components/TranscriptView";
+import { ContextView } from "../components/ContextView";
+import { RecordingButton } from "../components/RecordingButton";
+import { useToast } from "../components/Toast";
+import { transcriptAnalyzer } from "../services/TranscriptAnalyzer";
+import { Task } from "../components/TasksPanel";
 
-type TabType = "transcript" | "context" | "note" | "entities";
-
-const RecentSessionsList: React.FC<{ sessionManager: SessionManager }> = ({ sessionManager }) => {
+// Reuse the RecentSessionsList component from original file
+const RecentSessionsList: React.FC<{
+  sessionManager: SessionManager;
+  onSessionSelect: (id: string) => void;
+  refreshTrigger?: number;
+}> = ({ sessionManager, onSessionSelect, refreshTrigger }) => {
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     loadSessions();
-  }, []);
+  }, [refreshTrigger]); // Reload when refreshTrigger changes
 
   const loadSessions = async () => {
     try {
       const allSessions = await sessionManager.listSessions();
-      // Sort by date, most recent first
-      const sorted = allSessions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-      setSessions(sorted.slice(0, 10)); // Show last 10 sessions
+      const sorted = allSessions.sort(
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+      );
+      setSessions(sorted.slice(0, 10));
     } catch (error) {
       console.error("Failed to load sessions:", error);
     }
   };
 
   const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', { 
-      month: '2-digit', 
-      day: '2-digit', 
-      year: 'numeric' 
+    return new Intl.DateTimeFormat("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
     }).format(date);
   };
 
   const formatTime = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      minute: '2-digit'
+    return new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
     }).format(date);
   };
 
-  const formatDuration = (seconds?: number) => {
-    if (!seconds || seconds === 0) return "0 mins";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    if (mins === 0) return `${secs}s`;
-    return `${mins} mins`;
-  };
-
   const groupedSessions: { [key: string]: Session[] } = {};
-  sessions.forEach(session => {
+  sessions.forEach((session) => {
     const dateKey = formatDate(session.createdAt);
     if (!groupedSessions[dateKey]) {
       groupedSessions[dateKey] = [];
@@ -72,125 +75,21 @@ const RecentSessionsList: React.FC<{ sessionManager: SessionManager }> = ({ sess
         <div key={date}>
           <div className="text-xs text-gray-500 px-2 py-1">{date}</div>
           {dateSessions.map((session) => (
-            <div 
+            <button
               key={session.id}
-              className="px-2 py-2 hover:bg-gray-50 rounded"
+              onClick={() => onSessionSelect(session.id)}
+              className="w-full text-left px-2 py-2 hover:bg-gray-50 rounded"
             >
-              {editingId === session.id ? (
-                <div className="flex items-center space-x-2">
-                  <input
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onKeyDown={async (e) => {
-                      if (e.key === 'Enter') {
-                        // Save on Enter
-                        try {
-                          setIsSaving(true);
-                          const storage = new StorageService();
-                          const existing = await storage.getSession(session.id);
-                          if (existing) {
-                            await storage.updateSession(session.id, {
-                              patientContext: {
-                                ...existing.patientContext,
-                                identifier: editingName.trim(),
-                              },
-                            });
-                            await loadSessions();
-                          }
-                        } catch (err) {
-                          console.error('Failed to rename session:', err);
-                        } finally {
-                          setIsSaving(false);
-                          setEditingId(null);
-                          setEditingName('');
-                        }
-                      } else if (e.key === 'Escape') {
-                        setEditingId(null);
-                        setEditingName('');
-                      }
-                    }}
-                    className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Enter patient name"
-                    autoFocus
-                  />
-                  <button
-                    onClick={async () => {
-                      try {
-                        setIsSaving(true);
-                        const storage = new StorageService();
-                        const existing = await storage.getSession(session.id);
-                        if (existing) {
-                          await storage.updateSession(session.id, {
-                            patientContext: {
-                              ...existing.patientContext,
-                              identifier: editingName.trim(),
-                            },
-                          });
-                          await loadSessions();
-                        }
-                      } catch (err) {
-                        console.error('Failed to rename session:', err);
-                      } finally {
-                        setIsSaving(false);
-                        setEditingId(null);
-                        setEditingName('');
-                      }
-                    }}
-                    className="text-green-600 hover:text-green-700"
-                    title="Save"
-                    disabled={isSaving}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  </button>
-                  <button
-                    onClick={() => { setEditingId(null); setEditingName(''); }}
-                    className="text-gray-500 hover:text-gray-700"
-                    title="Cancel"
-                    disabled={isSaving}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => navigate(`/session/${session.id}`)}
-                      className={`text-left flex-1 text-sm ${
-                        (session.patientContext?.identifier || session.patientIdentifier)
-                          ? 'font-medium text-gray-900'
-                          : 'text-gray-500'
-                      }`}
-                      title="Open session"
-                    >
-                      {session.patientContext?.identifier || session.patientIdentifier || 'Untitled session'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        const name = session.patientContext?.identifier || session.patientIdentifier || '';
-                        setEditingId(session.id);
-                        setEditingName(name);
-                      }}
-                      className="ml-2 p-1 text-gray-400 hover:text-gray-600 rounded"
-                      title="Edit patient name"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                    </button>
-                  </div>
-                  <div className="text-xs text-gray-400">
-                    {formatTime(session.createdAt)} · {formatDuration(session.metadata?.duration)}
-                  </div>
-                </>
-              )}
-            </div>
+              <div className="text-sm font-medium text-gray-900">
+                {session.patientContext?.identifier || "Untitled Session"}
+              </div>
+              <div className="text-xs text-gray-500">
+                {formatTime(session.createdAt)}
+              </div>
+            </button>
           ))}
         </div>
       ))}
-      {sessions.length === 0 && (
-        <div className="px-2 py-4 text-center text-sm text-gray-400">
-          No sessions yet
-        </div>
-      )}
     </>
   );
 };
@@ -198,279 +97,611 @@ const RecentSessionsList: React.FC<{ sessionManager: SessionManager }> = ({ sess
 export const SessionWorkspace: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  
+  const { showToast, ToastContainer } = useToast();
+  const hasAutoCreatedRef = useRef(false);
+
+  // Core state
   const [session, setSession] = useState<Session | null>(null);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>("note");
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState("00:00");
-  const [hasStartedSession, setHasStartedSession] = useState(false);
-  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
-  const [patientDetails, setPatientDetails] = useState("");
-  const [isEditingPatientDetails, setIsEditingPatientDetails] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<NoteTemplate | null>(null);
-  const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
-  const [availableTemplates, setAvailableTemplates] = useState<NoteTemplate[]>([]);
-  const [generatedNote, setGeneratedNote] = useState<string>("");
-  const [clinicalEntities, setClinicalEntities] = useState<ClinicalEntity[]>([]);
-  const [soapElements, setSOAPElements] = useState<SOAPElements | null>(null);
-  const [extractingEntities, setExtractingEntities] = useState(false);
-  const [generatingNote, setGeneratingNote] = useState(false);
-  const [vitalSigns, setVitalSigns] = useState({
-    bloodPressureSystolic: '',
-    bloodPressureDiastolic: '',
-    heartRate: '',
-    temperature: '',
-    respiratoryRate: '',
-    oxygenSaturation: '',
-    weight: '',
-    height: '',
-  });
-
-  const [recordingController] = useState(() => new EnhancedRecordingController());
-  const [sessionManager] = useState(() =>
-    new SessionManager(
-      new StorageService(),
-      recordingController,
-      new TranscriptionServiceManager(),
-      new DocumentationGenerator()
-    )
+  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(
+    null
   );
 
-  const transcriptSegments = session?.transcript ?? [];
+  // Patient & Template state
+  const [patientDetails, setPatientDetails] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<NoteTemplate | null>(
+    null
+  );
+  const [availableTemplates, setAvailableTemplates] = useState<NoteTemplate[]>(
+    []
+  );
 
-  useEffect(() => {
-    if (sessionId && sessionId !== 'new' && sessionId !== 'test-session') {
-      loadSession(sessionId);
-    } else if (sessionId === 'new') {
-      // Create a new session automatically
-      createNewSession();
+  // Note & Content state
+  const [generatedNote, setGeneratedNote] = useState<string>("");
+  const [generatingNote, setGeneratingNote] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+
+  // Tasks state
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
+
+  // Vital signs state
+  const [vitalSigns, setVitalSigns] = useState<any>({});
+
+  // Session list refresh trigger
+  const [sessionListRefresh, setSessionListRefresh] = useState(0);
+
+  // Services
+  const [recordingController] = useState(
+    () => new EnhancedRecordingController()
+  );
+  const [sessionManager] = useState(
+    () =>
+      new SessionManager(
+        new StorageService(),
+        recordingController,
+        new TranscriptionServiceManager(),
+        new DocumentationGenerator()
+      )
+  );
+
+  // Define createNewSession before useEffect so it can be called
+  const createNewSession = React.useCallback(async () => {
+    console.log("🔨 createNewSession called");
+
+    if (isCreatingSession) {
+      console.log("⚠️ Already creating a session, skipping");
+      return;
     }
-    
-    // Load available templates based on user specialty
+
+    setIsCreatingSession(true);
+    try {
+      const newSession = await sessionManager.createSession({
+        identifier: "",
+        visitType: "consultation",
+      });
+      console.log("✅ Session created:", newSession.id);
+      setSession(newSession);
+
+      // Load default template for new session
+      const defaultTemplateId = userSettingsService.getDefaultTemplate();
+      if (defaultTemplateId) {
+        const userSpecialty = userSettingsService.getSpecialty();
+        const templates = getTemplatesBySpecialty(userSpecialty);
+        const defaultTemplate = templates.find(
+          (t) => t.id === defaultTemplateId
+        );
+        if (defaultTemplate) {
+          console.log(
+            "📋 Setting default template for new session:",
+            defaultTemplate.name
+          );
+          setSelectedTemplate(defaultTemplate);
+        }
+      }
+
+      // Mark tasks as loaded for new session to enable auto-save
+      setTasksLoaded(true);
+
+      navigate(`/session/${newSession.id}`, { replace: true });
+    } catch (error) {
+      console.error("❌ Failed to create session:", error);
+      showToast("Failed to create session", "error");
+    } finally {
+      setIsCreatingSession(false);
+    }
+  }, [sessionManager, navigate, showToast, isCreatingSession]);
+
+  // Initialize
+  useEffect(() => {
+    console.log(
+      "🔄 Initialize effect triggered, sessionId:",
+      sessionId,
+      "session:",
+      session?.id,
+      "isCreatingSession:",
+      isCreatingSession
+    );
+
+    // Skip if we're currently creating a session
+    if (isCreatingSession) {
+      console.log("⏳ Session creation in progress, skipping initialization");
+      return;
+    }
+
+    // Only proceed if we don't already have this session loaded
+    if (session && session.id === sessionId) {
+      console.log("✅ Session already loaded, skipping initialization");
+      return;
+    }
+
+    if (sessionId && sessionId !== "new") {
+      hasAutoCreatedRef.current = false;
+      // Load existing session
+      console.log("📂 Loading existing session:", sessionId);
+      loadSession(sessionId);
+    } else if (sessionId === "new" || !sessionId) {
+      // Auto-create session when navigating to /session/new OR when no sessionId
+      console.log("🆕 Auto-creating new session (sessionId:", sessionId, ")");
+      if (hasAutoCreatedRef.current) {
+        console.log("✅ Auto-create already triggered, skipping duplicate creation");
+      } else {
+        hasAutoCreatedRef.current = true;
+        createNewSession();
+      }
+    }
+
+    // Load templates
     const userSpecialty = userSettingsService.getSpecialty();
     const templates = getTemplatesBySpecialty(userSpecialty);
     setAvailableTemplates(templates);
-    
+    console.log(
+      "📚 Loaded",
+      templates.length,
+      "templates for specialty:",
+      userSpecialty
+    );
+
     // Set default template from user settings
     const defaultTemplateId = userSettingsService.getDefaultTemplate();
     if (defaultTemplateId && !selectedTemplate) {
-      const template = templates.find(t => t.id === defaultTemplateId);
-      if (template) {
-        console.log('📋 Setting default template from settings:', template.name);
-        setSelectedTemplate(template);
+      const defaultTemplate = templates.find((t) => t.id === defaultTemplateId);
+      if (defaultTemplate) {
+        console.log(
+          "📋 Setting default template from settings:",
+          defaultTemplate.name
+        );
+        setSelectedTemplate(defaultTemplate);
       } else {
-        console.warn('⚠️ Saved default template not found:', defaultTemplateId);
+        console.warn("⚠️ Saved default template not found:", defaultTemplateId);
       }
     }
   }, [sessionId]);
 
-  const createNewSession = async () => {
-    try {
-      const newSession = await sessionManager.createSession({
-        identifier: '',
-        visitType: 'consultation'
-      });
-      setSession(newSession);
-      // Update URL to use the actual session ID
-      navigate(`/session/${newSession.id}`, { replace: true });
-    } catch (error) {
-      console.error("Failed to create session:", error);
-    }
-  };
-
-  // Update duration timer while recording
+  // Update duration timer
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
-    
+
     if (isRecording && recordingStartTime) {
       interval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
         const minutes = Math.floor(elapsed / 60);
         const seconds = elapsed % 60;
-        setDuration(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+        setDuration(
+          `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(
+            2,
+            "0"
+          )}`
+        );
       }, 1000);
     }
-    
+
     return () => {
       if (interval) clearInterval(interval);
     };
   }, [isRecording, recordingStartTime]);
 
-  // Set up session update listener
+  // Session update listener
   useEffect(() => {
     const handleSessionUpdate = (updatedSession: Session) => {
-      setSession({ ...updatedSession, transcript: [...updatedSession.transcript] });
+      setSession({
+        ...updatedSession,
+        transcript: [...updatedSession.transcript],
+      });
+
+      // Sync recording state with session status
+      const shouldBeRecording = updatedSession.status === "active";
+      if (shouldBeRecording !== isRecording) {
+        console.log(
+          `Syncing recording state: ${isRecording} -> ${shouldBeRecording}`
+        );
+        setIsRecording(shouldBeRecording);
+        if (!shouldBeRecording) {
+          setRecordingStartTime(null);
+          setDuration("00:00");
+        }
+      }
     };
 
     sessionManager.onSessionUpdate(handleSessionUpdate);
-    
-    return () => {
-      // Cleanup if needed
+  }, [sessionManager, isRecording]);
+
+  // Save tasks to storage whenever they change
+  useEffect(() => {
+    const saveTasks = async () => {
+      if (!session || !tasksLoaded) return;
+
+      try {
+        const storage = new StorageService();
+        await storage.updateSession(session.id, {
+          metadata: {
+            ...session.metadata,
+            tasks: tasks,
+          },
+        });
+        console.log('✅ Tasks saved to storage');
+      } catch (error) {
+        console.error('❌ Failed to save tasks:', error);
+      }
     };
-  }, [sessionManager]);
+
+    // Only save if we have a session and tasks have been loaded (not initial render)
+    if (session && tasksLoaded) {
+      saveTasks();
+    }
+  }, [tasks, session, tasksLoaded]);
+
+  const handleNewSessionClick = async () => {
+    console.log("🔘 New session button clicked");
+
+    if (isCreatingSession) {
+      console.log("⚠️ Already creating a session, ignoring click");
+      return;
+    }
+
+    // Always create a fresh session when button is clicked
+    setIsCreatingSession(true);
+    try {
+      const newSession = await sessionManager.createSession({
+        identifier: "",
+        visitType: "consultation",
+      });
+      console.log("✅ Session created from button click:", newSession.id);
+      setSession(newSession);
+
+      // Load default template for new session
+      const defaultTemplateId = userSettingsService.getDefaultTemplate();
+      if (defaultTemplateId) {
+        const userSpecialty = userSettingsService.getSpecialty();
+        const templates = getTemplatesBySpecialty(userSpecialty);
+        const defaultTemplate = templates.find(
+          (t) => t.id === defaultTemplateId
+        );
+        if (defaultTemplate) {
+          console.log(
+            "📋 Setting default template for new session:",
+            defaultTemplate.name
+          );
+          setSelectedTemplate(defaultTemplate);
+        }
+      }
+
+      // Mark tasks as loaded for new session to enable auto-save
+      setTasksLoaded(true);
+
+      navigate(`/session/${newSession.id}`, { replace: true });
+      showToast("New session created", "success");
+    } catch (error) {
+      console.error("Failed to create session:", error);
+      showToast("Failed to create session", "error");
+    } finally {
+      setIsCreatingSession(false);
+    }
+  };
 
   const loadSession = async (id: string) => {
     try {
       const loadedSession = await sessionManager.getSession(id);
       setSession(loadedSession);
-      setHasStartedSession(true);
-      // Load patient details if available
+
+      // Sync recording state with loaded session
+      const shouldBeRecording = loadedSession.status === "active";
+      setIsRecording(shouldBeRecording);
+      if (!shouldBeRecording) {
+        setRecordingStartTime(null);
+        setDuration("00:00");
+      }
+
       if (loadedSession.patientContext?.identifier) {
         setPatientDetails(loadedSession.patientContext.identifier);
       }
+      if (loadedSession.documentation?.clinicalNote) {
+        setGeneratedNote(loadedSession.documentation.clinicalNote);
+      }
+
+      // Load vital signs if available
+      if (loadedSession.documentation?.soapNote?.objective?.vitalSigns) {
+        setVitalSigns(
+          loadedSession.documentation.soapNote.objective.vitalSigns
+        );
+      }
+
+      // Load tasks from session metadata
+      if (loadedSession.metadata?.tasks) {
+        setTasks(loadedSession.metadata.tasks);
+      }
+
+      // Mark tasks as loaded to enable auto-save
+      setTasksLoaded(true);
     } catch (error) {
       console.error("Failed to load session:", error);
+      showToast("Failed to load session", "error");
     }
   };
 
-  const updatePatientDetails = async () => {
+  const handlePatientDetailsChange = async (details: string) => {
+    setPatientDetails(details);
     if (!session) return;
-    
+
     try {
-      const updatedSession = {
+      const storage = new StorageService();
+      await storage.updateSession(session.id, {
+        patientContext: {
+          ...session.patientContext,
+          identifier: details,
+        },
+      });
+
+      // Update local session state
+      setSession({
         ...session,
         patientContext: {
           ...session.patientContext,
-          identifier: patientDetails
+          identifier: details,
         },
-        updatedAt: new Date()
-      };
-      
-      // Save to storage
-      await sessionManager.getSession(session.id);
-      setSession(updatedSession);
-      setIsEditingPatientDetails(false);
-      
-      console.log('✅ Patient details saved');
-    } catch (error) {
-      console.error("❌ Failed to update patient details:", error);
-      alert('Failed to save patient details. Please try again.');
-    }
-  };
-
-  const saveVitalSigns = async () => {
-    if (!session) return;
-    
-    try {
-      const updatedSession = {
-        ...session,
-        documentation: {
-          ...session.documentation,
-          soapNote: {
-            ...session.documentation.soapNote,
-            objective: {
-              ...session.documentation.soapNote.objective,
-              vitalSigns: {
-                bloodPressure: vitalSigns.bloodPressureSystolic && vitalSigns.bloodPressureDiastolic 
-                  ? `${vitalSigns.bloodPressureSystolic}/${vitalSigns.bloodPressureDiastolic}` 
-                  : undefined,
-                heartRate: vitalSigns.heartRate ? parseInt(vitalSigns.heartRate) : undefined,
-                temperature: vitalSigns.temperature ? parseFloat(vitalSigns.temperature) : undefined,
-                respiratoryRate: vitalSigns.respiratoryRate ? parseInt(vitalSigns.respiratoryRate) : undefined,
-                oxygenSaturation: vitalSigns.oxygenSaturation ? parseInt(vitalSigns.oxygenSaturation) : undefined,
-                weight: vitalSigns.weight ? parseFloat(vitalSigns.weight) : undefined,
-                height: vitalSigns.height ? parseFloat(vitalSigns.height) : undefined,
-              }
-            }
-          }
-        },
-        updatedAt: new Date()
-      };
-      
-      setSession(updatedSession);
-      console.log('✅ Vital signs saved');
-      alert('Vital signs saved successfully!');
-    } catch (error) {
-      console.error("❌ Failed to save vital signs:", error);
-      alert('Failed to save vital signs. Please try again.');
-    }
-  };
-
-  const saveNote = async () => {
-    if (!session || !generatedNote) return;
-    
-    try {
-      const updatedSession = {
-        ...session,
-        documentation: {
-          ...session.documentation,
-          clinicalNote: generatedNote,
-          lastUpdated: new Date()
-        },
-        updatedAt: new Date()
-      };
-      
-      setSession(updatedSession);
-      console.log('✅ Note saved');
-      alert('Note saved successfully!');
-    } catch (error) {
-      console.error("❌ Failed to save note:", error);
-      alert('Failed to save note. Please try again.');
-    }
-  };
-
-  const startRecording = async () => {
-    let currentSession = session;
-    
-    if (!currentSession) {
-      // Create a session if one doesn't exist
-      const newSession = await sessionManager.createSession({
-        identifier: sessionId === 'test-session' ? 'TEST-PATIENT' : '',
-        visitType: 'consultation'
       });
-      setSession(newSession);
-      currentSession = newSession;
-      
-      // Update URL if we're on a temporary route
-      if (sessionId === 'test-session' || sessionId === 'new') {
-        navigate(`/session/${newSession.id}`, { replace: true });
-      }
-    }
-    
-    if (currentSession) {
-      try {
-        await sessionManager.startSession(currentSession.id);
-        setIsRecording(true);
-        setHasStartedSession(true);
-        setRecordingStartTime(Date.now());
-        setDuration("0:00");
-      } catch (error) {
-        console.error("Failed to start recording:", error);
-      }
+
+      // Trigger session list refresh
+      setSessionListRefresh((prev) => prev + 1);
+
+      showToast("Patient details saved", "success");
+    } catch (error) {
+      console.error("Failed to save patient details:", error);
+      showToast("Failed to save patient details", "error");
     }
   };
 
-  const stopRecording = async () => {
+  const handleStartRecording = async () => {
     if (!session) return;
-    
+
+    // Check if already recording
+    if (isRecording) {
+      console.log("Already recording, skipping start");
+      return;
+    }
+
     try {
+      await sessionManager.startSession(session.id);
+      setIsRecording(true);
+      setRecordingStartTime(Date.now());
+      showToast("Recording started", "success");
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      // Reset state on error
+      setIsRecording(false);
+      setRecordingStartTime(null);
+      showToast("Failed to start recording", "error");
+    }
+  };
+
+  const handleStopRecording = async () => {
+    if (!session) {
+      console.error("❌ No session available");
+      return;
+    }
+
+    // Check if actually recording before trying to stop
+    if (!isRecording) {
+      console.log("⚠️ Not recording, skipping stop");
+      return;
+    }
+
+    // Check if session is actually active
+    if (session.status !== "active") {
+      console.warn("⚠️ Session status is not active:", session.status);
+      console.log("🔄 Resetting UI state to match session state");
+      setIsRecording(false);
+      setRecordingStartTime(null);
+      setDuration("00:00");
+      showToast("Recording was not active", "warning");
+      return;
+    }
+
+    try {
+      console.log("🛑 Stopping recording for session:", session.id);
       await sessionManager.stopSession(session.id);
       setIsRecording(false);
       setRecordingStartTime(null);
-      
-      // Reload session to get updated duration
+      setDuration("00:00");
+      showToast("Recording stopped", "success");
+
+      // Reload session to get updated transcript
+      console.log("📥 Reloading session to get updated transcript...");
       const updatedSession = await sessionManager.getSession(session.id);
+      console.log(
+        "📊 Updated session transcript length:",
+        updatedSession.transcript?.length || 0
+      );
+
+      if (updatedSession.transcript && updatedSession.transcript.length > 0) {
+        console.log(
+          "📝 Transcript segments:",
+          updatedSession.transcript.map((s) => s.text.substring(0, 50))
+        );
+      }
+
       setSession(updatedSession);
+
+      // Analyze transcript to extract tasks and vital signs, then auto-generate note
+      if (updatedSession.transcript && updatedSession.transcript.length > 0) {
+        const fullTranscript = updatedSession.transcript
+          .map((s) => s.text)
+          .join(" ");
+        console.log(
+          "📄 Full transcript length:",
+          fullTranscript.length,
+          "characters"
+        );
+
+        // First analyze for tasks and vital signs
+        showToast("Analyzing transcript...", "info");
+        await analyzeTranscript(fullTranscript);
+
+        // Then auto-generate note if template is selected
+        if (selectedTemplate) {
+          console.log(
+            "📝 Auto-generating note with template:",
+            selectedTemplate.name
+          );
+          showToast("Generating note...", "info");
+          await generateNoteFromTranscript(fullTranscript);
+        }
+      } else {
+        console.warn("⚠️ No transcript found after stopping recording");
+        showToast("No transcript was recorded", "warning");
+      }
     } catch (error) {
       console.error("Failed to stop recording:", error);
+      // Reset state even on error to prevent stuck UI
+      setIsRecording(false);
+      setRecordingStartTime(null);
+      setDuration("00:00");
+      showToast("Failed to stop recording", "error");
     }
   };
 
-  const generateNoteFromTranscript = async () => {
-    if (!session || !selectedTemplate || transcriptSegments.length === 0) {
-      console.log('Cannot generate note: missing session, template, or transcript');
-      alert('Please select a template and ensure you have a transcript before generating a note.');
+  const handleUploadAudio = async (file: File) => {
+    console.log("🎯 handleUploadAudio called with file:", file);
+    console.log("📋 Current session:", session?.id);
+
+    if (!session) {
+      console.error("❌ No session available");
+      showToast("Please create a session first", "error");
+      return;
+    }
+
+    try {
+      console.log(
+        "📤 Processing uploaded audio file:",
+        file.name,
+        file.type,
+        file.size
+      );
+      showToast("Converting audio format...", "info");
+
+      // Convert audio to WAV format for maximum Gemini compatibility
+      const { audioConverter } = await import("../utils/audioConverter");
+
+      let audioBlob: Blob;
+
+      // Check if conversion is needed
+      const needsConversion =
+        !file.type.includes("wav") && !file.type.includes("mpeg");
+
+      if (needsConversion) {
+        console.log("🔄 Converting audio to WAV format...");
+        try {
+          audioBlob = await audioConverter.convertToWav(file);
+          console.log("✅ Audio converted to WAV:", audioBlob.size, "bytes");
+          showToast("Audio converted successfully", "success");
+        } catch (conversionError) {
+          console.warn(
+            "⚠️ Conversion failed, using original file:",
+            conversionError
+          );
+          // Fallback to original file if conversion fails
+          const arrayBuffer = await file.arrayBuffer();
+          audioBlob = new Blob([arrayBuffer], {
+            type: file.type || "audio/wav",
+          });
+        }
+      } else {
+        console.log(
+          "✓ Audio format is already compatible, skipping conversion"
+        );
+        const arrayBuffer = await file.arrayBuffer();
+        audioBlob = new Blob([arrayBuffer], { type: file.type });
+      }
+
+      showToast("Transcribing audio...", "info");
+
+      // Use Gemini transcription service directly
+      const { GeminiTranscriptionService } = await import(
+        "../services/GeminiTranscriptionService"
+      );
+      const transcriptionService = new GeminiTranscriptionService();
+
+      console.log("🎤 Starting transcription with Gemini...");
+      const result = await transcriptionService.transcribe(audioBlob);
+
+      console.log("✅ Transcription result:", result);
+
+      if (result.segments && result.segments.length > 0) {
+        console.log(`📝 Got ${result.segments.length} segments`);
+
+        // Update session with transcript
+        const updatedSession = {
+          ...session,
+          transcript: [...session.transcript, ...result.segments],
+        };
+        setSession(updatedSession);
+
+        // Save to storage
+        const storage = new StorageService();
+        await storage.updateSession(session.id, {
+          transcript: updatedSession.transcript,
+        });
+
+        showToast(`Transcribed ${result.segments.length} segments`, "success");
+
+        // Analyze the transcript and auto-generate note
+        const fullTranscript = result.segments.map((s) => s.text).join(" ");
+        console.log(
+          "🔍 Analyzing transcript:",
+          fullTranscript.substring(0, 100) + "..."
+        );
+
+        // First analyze for tasks and vital signs
+        await analyzeTranscript(fullTranscript);
+
+        // Then auto-generate note if template is selected
+        if (selectedTemplate) {
+          console.log(
+            "📝 Auto-generating note with template:",
+            selectedTemplate.name
+          );
+          showToast("Generating note...", "info");
+          await generateNoteFromTranscript(fullTranscript);
+        }
+      } else {
+        console.warn("⚠️ No segments in transcription result");
+        showToast("No speech detected in audio file", "error");
+      }
+    } catch (error) {
+      console.error("❌ Failed to process audio file:", error);
+
+      // Check if it's a Gemini API error
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+
+      if (errorMessage.includes("500") || errorMessage.includes("INTERNAL")) {
+        showToast(
+          "Gemini API error: This audio format may not be fully supported. Try converting to WAV or MP3 format.",
+          "error"
+        );
+      } else if (errorMessage.includes("400")) {
+        showToast(
+          "Invalid audio file. Please ensure the file is a valid audio recording.",
+          "error"
+        );
+      } else {
+        showToast(`Failed to process audio file: ${errorMessage}`, "error");
+      }
+    }
+  };
+
+  const generateNoteFromTranscript = async (transcriptText: string) => {
+    if (!selectedTemplate) {
+      console.warn("⚠️ No template selected for note generation");
       return;
     }
 
     try {
       setGeneratingNote(true);
-      console.log('🤖 Generating note using template:', selectedTemplate.name);
-      
-      // Combine all transcript segments into one text
-      const fullTranscript = transcriptSegments
-        .map(seg => `${seg.speaker}: ${seg.text}`)
-        .join('\n');
+      console.log("🤖 Generating note using template:", selectedTemplate.name);
 
       // Create prompt for AI
       const prompt = `You are a medical documentation assistant. Your task is to extract information from the consultation transcript and organize it into a structured medical note.
@@ -487,41 +718,51 @@ Template: ${selectedTemplate.name}
 ${selectedTemplate.aiPrompt}
 
 Transcript:
-${fullTranscript}
+${transcriptText}
 
 Generate a medical note with these sections (only fill in what's actually mentioned):
-${selectedTemplate.sections.map(s => `
+${selectedTemplate.sections
+  .map(
+    (s) => `
 ${s.title}:
-${s.required ? '(Required - extract from transcript if available, otherwise write "Not documented")' : '(Optional - only include if mentioned in transcript)'}
-`).join('\n')}
+${
+  s.required
+    ? '(Required - extract from transcript if available, otherwise write "Not documented")'
+    : "(Optional - only include if mentioned in transcript)"
+}
+`
+  )
+  .join("\n")}
 
 Remember: Accuracy over completeness. Only document what was actually said.`;
 
-      console.log('📤 Sending prompt to AI...');
+      console.log("📤 Sending prompt to AI...");
 
       // Call Gemini API to generate the note
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{
-              parts: [{ text: prompt }]
-            }],
+            contents: [
+              {
+                parts: [{ text: prompt }],
+              },
+            ],
             generationConfig: {
-              temperature: 0.1,  // Very low temperature for factual accuracy
-              topP: 0.8,         // Lower topP to reduce randomness
-              topK: 20,          // Lower topK for more focused responses
+              temperature: 0.1,
+              topP: 0.8,
+              topK: 20,
             },
             safetySettings: [
               {
                 category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_NONE"
-              }
-            ]
-          })
+                threshold: "BLOCK_NONE",
+              },
+            ],
+          }),
         }
       );
 
@@ -531,936 +772,390 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
 
       const data = await response.json();
       let generatedText = data.candidates[0].content.parts[0].text;
-      
+
       // Post-process to remove common hallucination patterns
       generatedText = generatedText
-        .replace(/\[.*?\]/g, '') // Remove placeholder brackets
-        .replace(/\(example:.*?\)/gi, '') // Remove example text
-        .replace(/\(placeholder.*?\)/gi, '') // Remove placeholder text
-        .replace(/e\.g\.,.*?(?=\n|$)/gi, '') // Remove "e.g." examples
+        .replace(/\[.*?\]/g, "")
+        .replace(/\(example:.*?\)/gi, "")
+        .replace(/\(placeholder.*?\)/gi, "")
+        .replace(/e\.g\.,.*?(?=\n|$)/gi, "")
         .trim();
-      
-      console.log('✅ Note generated successfully');
-      setGeneratedNote(generatedText);
 
+      console.log("✅ Note generated successfully");
+      setGeneratedNote(generatedText);
+      showToast("Note generated successfully!", "success");
+
+      // Auto-switch to Note tab to show the generated note
+      setActiveTab("note");
     } catch (error) {
-      console.error('❌ Failed to generate note:', error);
-      alert('Failed to generate note. Please check your API key and try again.');
+      console.error("❌ Failed to generate note:", error);
+      showToast("Failed to generate note", "error");
     } finally {
       setGeneratingNote(false);
     }
   };
 
-  // Auto-save note every 30 seconds
-  useEffect(() => {
-    if (generatedNote && session) {
-      const autoSaveTimer = setInterval(() => {
-        console.log('💾 Auto-saving note...');
-        saveNote();
-      }, 30000); // 30 seconds
-      
-      return () => clearInterval(autoSaveTimer);
-    }
-  }, [generatedNote, session]);
+  const analyzeTranscript = async (transcriptText: string) => {
+    try {
+      console.log("🔍 Analyzing transcript for tasks and vital signs...");
+      const analysis = await transcriptAnalyzer.analyzeTranscript(
+        transcriptText
+      );
 
-  // Extract clinical entities when transcript updates
-  const extractClinicalEntities = async () => {
-    if (!session || transcriptSegments.length === 0) {
+      // Update vital signs if found
+      if (analysis.vitalSigns && Object.keys(analysis.vitalSigns).length > 0) {
+        console.log("✅ Extracted vital signs:", analysis.vitalSigns);
+        setVitalSigns(analysis.vitalSigns);
+
+        // Save to session
+        if (session) {
+          const storage = new StorageService();
+          await storage.updateSession(session.id, {
+            documentation: {
+              ...session.documentation,
+              soapNote: {
+                ...session.documentation.soapNote,
+                objective: {
+                  ...session.documentation.soapNote.objective,
+                  vitalSigns: analysis.vitalSigns,
+                },
+              },
+            },
+          });
+        }
+        showToast(
+          `Extracted ${Object.keys(analysis.vitalSigns).length} vital signs`,
+          "success"
+        );
+      }
+
+      // Update tasks if found
+      if (analysis.tasks && analysis.tasks.length > 0) {
+        console.log("✅ Extracted tasks:", analysis.tasks);
+        const newTasks: Task[] = analysis.tasks.map((task, index) => ({
+          id: `task-${Date.now()}-${index}`,
+          text: task.text,
+          completed: false,
+          priority: task.priority,
+          category: task.category,
+          createdAt: new Date(),
+        }));
+        setTasks(newTasks);
+        showToast(`Created ${newTasks.length} tasks`, "success");
+      }
+
+      console.log("✅ Transcript analysis complete");
+    } catch (error) {
+      console.error("❌ Failed to analyze transcript:", error);
+      showToast("Failed to analyze transcript", "error");
+    }
+  };
+
+  const handleGenerateNote = async () => {
+    if (
+      !session ||
+      !selectedTemplate ||
+      !session.transcript ||
+      session.transcript.length === 0
+    ) {
+      showToast(
+        "Please select a template and ensure you have a transcript",
+        "error"
+      );
       return;
     }
 
     try {
-      setExtractingEntities(true);
-      console.log('🔍 Extracting clinical entities...');
+      setGeneratingNote(true);
 
-      const fullTranscript = transcriptSegments
-        .map(seg => seg.text)
-        .join(' ');
+      const fullTranscript = session.transcript
+        .map((seg) => `${seg.speaker}: ${seg.text}`)
+        .join("\n");
 
-      // Extract both general entities and SOAP elements
-      const [entities, soap] = await Promise.all([
-        clinicalEntityExtractor.extractEntities(fullTranscript),
-        clinicalEntityExtractor.extractSOAPElements(fullTranscript)
-      ]);
+      const prompt = `You are a medical documentation assistant. Extract information from the consultation transcript and organize it into a structured medical note.
 
-      console.log('✅ Extracted', entities.length, 'clinical entities');
-      setClinicalEntities(entities);
-      setSOAPElements(soap);
+CRITICAL RULES:
+1. ONLY include information explicitly mentioned in the transcript
+2. DO NOT make up, infer, or hallucinate any medical information
+3. If a section has no relevant information, write "Not documented"
+4. Be accurate and conservative - when in doubt, leave it out
 
+Template: ${selectedTemplate.name}
+${selectedTemplate.aiPrompt}
+
+Transcript:
+${fullTranscript}
+
+Generate a medical note with these sections:
+${selectedTemplate.sections.map((s) => `${s.title}:`).join("\n")}`;
+
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.1,
+              topP: 0.8,
+              topK: 20,
+            },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const generatedText = data.candidates[0].content.parts[0].text.trim();
+
+      setGeneratedNote(generatedText);
+      showToast("Note generated successfully", "success");
     } catch (error) {
-      console.error('❌ Failed to extract entities:', error);
+      console.error("Failed to generate note:", error);
+      showToast("Failed to generate note", "error");
     } finally {
-      setExtractingEntities(false);
+      setGeneratingNote(false);
     }
   };
 
-  // Auto-generate note when transcript updates (if template is selected)
-  useEffect(() => {
-    if (transcriptSegments.length > 0) {
-      // Debounce: only generate after transcript stops updating for 5 seconds
-      const timer = setTimeout(() => {
-        if (selectedTemplate && !generatedNote) {
-          generateNoteFromTranscript();
-        }
-        // Always extract entities
-        extractClinicalEntities();
-      }, 5000);
-      
-      return () => clearTimeout(timer);
+  const handleSaveNote = async () => {
+    if (!session) return;
+
+    try {
+      setSavingNote(true);
+      const storage = new StorageService();
+      await storage.updateSession(session.id, {
+        documentation: {
+          ...session.documentation,
+          clinicalNote: generatedNote,
+          lastUpdated: new Date(),
+        },
+      });
+      showToast("Note saved successfully", "success");
+    } catch (error) {
+      console.error("Failed to save note:", error);
+      showToast("Failed to save note", "error");
+    } finally {
+      setSavingNote(false);
     }
-  }, [session?.transcript, selectedTemplate, generatedNote]);
+  };
+
+  const handleVitalSignsUpdate = async (vitals: any) => {
+    if (!session) return;
+
+    try {
+      const storage = new StorageService();
+      await storage.updateSession(session.id, {
+        documentation: {
+          ...session.documentation,
+          soapNote: {
+            ...session.documentation.soapNote,
+            objective: {
+              ...session.documentation.soapNote.objective,
+              vitalSigns: {
+                bloodPressure: vitals.bloodPressure,
+                heartRate: vitals.heartRate,
+                temperature: vitals.temperature,
+                respiratoryRate: vitals.respiratoryRate,
+                oxygenSaturation: vitals.oxygenSaturation,
+                weight: vitals.weight,
+                height: vitals.height,
+              },
+            },
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Failed to save vital signs:", error);
+    }
+  };
+
+  const handleAIMessage = (message: string) => {
+    console.log("AI message:", message);
+    showToast("AI assistant coming soon!", "info");
+  };
+
+  const handleVoiceInput = () => {
+    if (isRecording) {
+      handleStopRecording();
+    } else {
+      handleStartRecording();
+    }
+  };
+
+  const renderTabContent = () => {
+    if (!session) return null;
+
+    switch (activeTab) {
+      case "transcript":
+        return (
+          <TranscriptView
+            segments={session.transcript}
+            isRecording={isRecording}
+          />
+        );
+
+      case "context":
+        return (
+          <ContextView
+            vitalSigns={vitalSigns}
+            onVitalSignsUpdate={handleVitalSignsUpdate}
+          />
+        );
+
+      case "note":
+        return (
+          <div className="space-y-4 h-full flex flex-col">
+            <TemplateSelector
+              templates={availableTemplates}
+              selectedTemplate={selectedTemplate}
+              onSelectTemplate={setSelectedTemplate}
+              onGenerateNote={handleGenerateNote}
+              isGenerating={generatingNote}
+            />
+            <div className="flex-1 min-h-0">
+              <NoteDisplay
+                note={generatedNote}
+                onNoteChange={setGeneratedNote}
+                onSave={handleSaveNote}
+                isSaving={savingNote}
+              />
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Left Sidebar - Session List */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                AS
+    <>
+      <ToastContainer />
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="flex flex-1 flex-col lg:flex-row">
+          {/* Sessions list */}
+          <aside className="hidden lg:flex lg:w-72 xl:w-80 bg-white border-r border-gray-200 flex-col">
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                  AS
+                </div>
+                <div>
+                  <div className="text-sm font-semibold">Abc S</div>
+                  <div className="text-xs text-gray-500">sanjay@123.com</div>
+                </div>
               </div>
-              <div>
-                <div className="text-sm font-semibold">Abc S</div>
-                <div className="text-xs text-gray-500">sanjay@123.com</div>
-              </div>
-            </div>
-            <button className="p-1 hover:bg-gray-100 rounded">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01" />
-              </svg>
-            </button>
-          </div>
-          <button 
-            onClick={async () => {
-              try {
-                const newSession = await sessionManager.createSession({
-                  identifier: '',
-                  visitType: 'consultation'
-                });
-                navigate(`/session/${newSession.id}`);
-              } catch (error) {
-                console.error('Failed to create new session:', error);
-              }
-            }}
-            className="w-full bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 flex items-center justify-center space-x-2"
-          >
-            <span className="text-lg">⊕</span>
-            <span>New session</span>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-2">
-            <button className="w-full text-left px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 rounded">
-              Schedule
-            </button>
-            <button className="w-full text-left px-2 py-1.5 text-xs font-medium text-gray-900 bg-gray-100 rounded">
-              Past
-            </button>
-            <button className="w-full text-left px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 rounded">
-              And past
-            </button>
-          </div>
-
-          <div className="space-y-1 px-2 mt-2">
-            <RecentSessionsList sessionManager={sessionManager} />
-          </div>
-        </div>
-
-        <div className="p-4 border-t border-gray-200 space-y-1">
-          <button className="w-full text-left px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded flex items-center space-x-2">
-            <span>📋</span>
-            <span>Template library</span>
-          </button>
-          <button className="w-full text-left px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded flex items-center space-x-2">
-            <span>👥</span>
-            <span>Community</span>
-          </button>
-          <button className="w-full text-left px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded flex items-center space-x-2">
-            <span>👥</span>
-            <span>Team</span>
-          </button>
-          <button 
-            onClick={() => navigate('/settings')}
-            className="w-full text-left px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded flex items-center space-x-2"
-          >
-            <span>⚙️</span>
-            <span>Settings</span>
-          </button>
-        </div>
-
-        <div className="p-4 border-t border-gray-200 text-xs text-gray-500 space-y-2">
-          <button className="hover:text-gray-700">💰 Earn $50</button>
-          <button className="hover:text-gray-700">📞 Request a feature</button>
-          <button className="hover:text-gray-700">⌨️ Shortcuts</button>
-          <button className="hover:text-gray-700">❓ Help</button>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {/* Top Bar */}
-        <div className="bg-white border-b border-gray-200 px-6 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4 flex-1">
-              <button 
-                onClick={() => navigate('/sessions')}
-                className="text-gray-400 hover:text-gray-600"
+              <button
+                onClick={handleNewSessionClick}
+                className="mt-4 w-full bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 flex items-center justify-center space-x-2"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
+                <span className="text-lg">⊕</span>
+                <span>New session</span>
               </button>
-              
-              {isEditingPatientDetails ? (
-                <div className="flex items-center space-x-2 flex-1 max-w-md">
-                  <input
-                    type="text"
-                    value={patientDetails}
-                    onChange={(e) => setPatientDetails(e.target.value)}
-                    onBlur={updatePatientDetails}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        updatePatientDetails();
-                      } else if (e.key === 'Escape') {
-                        setIsEditingPatientDetails(false);
-                      }
-                    }}
-                    placeholder="Enter patient name or details..."
-                    className="flex-1 px-3 py-1.5 text-lg font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    autoFocus
-                  />
-                  <button
-                    onClick={updatePatientDetails}
-                    className="text-green-600 hover:text-green-700"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => setIsEditingPatientDetails(false)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <h1 
-                    onClick={() => setIsEditingPatientDetails(true)}
-                    className="text-lg font-semibold cursor-pointer hover:text-indigo-600 transition-colors"
-                  >
-                    {patientDetails || "Add patient details"}
-                  </h1>
-                  <button
-                    onClick={() => setIsEditingPatientDetails(true)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
-                </div>
-              )}
             </div>
-            
-            <div className="flex items-center space-x-3">
-              {!isRecording ? (
-                <button
-                  onClick={() => startRecording()}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center space-x-2"
-                >
-                  <span>▶ Start transcribing</span>
-                </button>
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={stopRecording}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 flex items-center space-x-2"
-                  >
-                    <span className="w-2 h-2 bg-white rounded-sm"></span>
-                    <span>Stop recording</span>
-                  </button>
-                  <div className="px-3 py-2 bg-red-50 text-red-700 rounded-lg text-sm font-medium flex items-center space-x-2">
-                    <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></span>
-                    <span>Recording</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between mt-3 text-sm">
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-2">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="text-gray-700">Today 06:07PM</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
-                </svg>
-                <span className="text-gray-700">English</span>
-              </div>
-              <div className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-                ✓ 14 days
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2 text-gray-500">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>{duration}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                </svg>
-                <div className="flex space-x-0.5">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className={`w-1 h-4 rounded ${i <= 3 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                  ))}
-                </div>
-                <span className="text-sm text-gray-600">Default - Microphone...</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="bg-white border-b border-gray-200 px-6">
-          <div className="flex items-center space-x-6">
-            <button
-              onClick={() => setActiveTab("transcript")}
-              className={`px-1 py-3 text-sm font-medium border-b-2 flex items-center space-x-2 ${
-                activeTab === "transcript"
-                  ? "border-gray-900 text-gray-900"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <span>📝</span>
-              <span>Transcript</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("context")}
-              className={`px-1 py-3 text-sm font-medium border-b-2 flex items-center space-x-2 ${
-                activeTab === "context"
-                  ? "border-gray-900 text-gray-900"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <span>📋</span>
-              <span>Context</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("note")}
-              className={`px-1 py-3 text-sm font-medium border-b-2 flex items-center space-x-2 ${
-                activeTab === "note"
-                  ? "border-gray-900 text-gray-900"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <span>📄</span>
-              <span>Note</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("entities")}
-              className={`px-1 py-3 text-sm font-medium border-b-2 flex items-center space-x-2 ${
-                activeTab === "entities"
-                  ? "border-gray-900 text-gray-900"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <span>🏥</span>
-              <span>Clinical Entities</span>
-              {clinicalEntities.length > 0 && (
-                <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-                  {clinicalEntities.length}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto bg-white">
-          <div className="max-w-4xl mx-auto p-6">
-            {!hasStartedSession ? (
-              /* Empty State */
-              <div className="flex flex-col items-center justify-center h-full py-20">
-                <div className="text-center max-w-md">
-                  <div className="mb-6 relative">
-                    <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-                      Start this session using the header
-                    </h2>
-                    <svg className="absolute -right-20 -top-10 w-32 h-32 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 100 100">
-                      <path d="M 20 80 Q 40 20, 80 10" strokeWidth="2" fill="none" markerEnd="url(#arrowhead)" />
-                      <defs>
-                        <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
-                          <polygon points="0 0, 10 5, 0 10" fill="currentColor" />
-                        </marker>
-                      </defs>
-                    </svg>
-                  </div>
-                  <p className="text-gray-600 mb-6">
-                    Your note will appear here once your session is complete
-                  </p>
-                  
-                  <button
-                    onClick={() => startRecording()}
-                    className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center space-x-2"
-                  >
-                    <span>▶ Start transcribing</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                {activeTab === "note" && (
-                  <div className="space-y-6">
-                    {/* Template Selector */}
-                    <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-                      <div className="flex items-center space-x-3">
-                        <div className="relative">
-                          <button 
-                            onClick={() => setShowTemplateDropdown(!showTemplateDropdown)}
-                            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center space-x-2"
-                          >
-                            <span>📋</span>
-                            <span>{selectedTemplate ? selectedTemplate.name : 'Select a template'}</span>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
-                          
-                          {showTemplateDropdown && (
-                            <div className="absolute left-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-10 max-h-96 overflow-y-auto">
-                              <div className="px-4 py-2 text-xs text-gray-500 border-b border-gray-200">
-                                Available Templates
-                              </div>
-                              {availableTemplates.map((template) => (
-                                <button
-                                  key={template.id}
-                                  onClick={() => {
-                                    setSelectedTemplate(template);
-                                    setShowTemplateDropdown(false);
-                                    setGeneratedNote(''); // Reset note when template changes
-                                  }}
-                                  className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center space-x-2"
-                                >
-                                  {selectedTemplate?.id === template.id && (
-                                    <span className="text-indigo-600">✓</span>
-                                  )}
-                                  <div className="flex-1">
-                                    <div className="text-sm font-medium text-gray-900">{template.name}</div>
-                                    <div className="text-xs text-gray-500">{template.description}</div>
-                                  </div>
-                                </button>
-                              ))}
-                              {availableTemplates.length === 0 && (
-                                <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                                  No templates available. Go to Settings to select your specialty.
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded">
-                          ✏️ Free
-                        </button>
-                        <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded">
-                          🎨 Custom
-                        </button>
-                        <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded">
-                          ⋯
-                        </button>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <button className="p-2 hover:bg-gray-100 rounded">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                          </svg>
-                        </button>
-                        <button className="p-2 hover:bg-gray-100 rounded">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                        </button>
-                        <button className="p-2 hover:bg-gray-100 rounded">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
-                        </button>
-                        <span className="text-sm text-gray-600">Copy ▼</span>
-                      </div>
-                    </div>
-
-                    {/* Medical Documentation */}
-                    {generatedNote || transcriptSegments.length > 0 ? (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center space-x-2">
-                            {generatedNote && (
-                              <>
-                                <span className="text-sm text-green-600 font-medium">✓ AI Generated</span>
-                                {selectedTemplate && (
-                                  <span className="text-xs text-gray-500">using {selectedTemplate.name}</span>
-                                )}
-                              </>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            {transcriptSegments.length > 0 && (
-                              <button
-                                onClick={generateNoteFromTranscript}
-                                disabled={!selectedTemplate || generatingNote}
-                                className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center space-x-1 disabled:opacity-50"
-                              >
-                                {generatingNote ? (
-                                  <>
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
-                                    <span>Generating...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                    </svg>
-                                    <span>{generatedNote ? 'Regenerate' : 'Generate Note'}</span>
-                                  </>
-                                )}
-                              </button>
-                            )}
-                            {!selectedTemplate && transcriptSegments.length > 0 && (
-                              <button
-                                onClick={() => setShowTemplateDropdown(true)}
-                                className="text-sm text-indigo-600 hover:text-indigo-700"
-                              >
-                                Select template first
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        
-                        {/* Editable Note Area */}
-                        <div>
-                          <textarea
-                            value={generatedNote}
-                            onChange={(e) => setGeneratedNote(e.target.value)}
-                            placeholder="AI-generated note will appear here. You can edit it freely.
-
-Start recording to generate a note, or type your own notes here..."
-                            className="w-full min-h-[500px] px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm leading-relaxed"
-                            style={{ whiteSpace: 'pre-wrap' }}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                          <div className="text-sm text-gray-500">
-                            {generatedNote.length} characters
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(generatedNote);
-                                // Show toast notification
-                                console.log('Note copied to clipboard');
-                              }}
-                              className="px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                            >
-                              Copy
-                            </button>
-                            <button
-                              onClick={saveNote}
-                              className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                            >
-                              Save Note
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-
-                      <div className="text-center py-12">
-                        <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <p className="text-gray-500 text-sm">No documentation generated yet</p>
-                        <p className="text-gray-400 text-xs mt-1">Start recording to generate documentation</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {activeTab === "transcript" && (
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-gray-900">Transcript</h3>
-                    {transcriptSegments.length > 0 ? (
-                      <div className="space-y-3">
-                        {transcriptSegments.map((segment) => (
-                          <div key={segment.id} className="p-3 bg-gray-50 rounded-lg">
-                            <div className="text-xs text-gray-500 mb-1">
-                              {segment.speaker === "provider" ? "Provider" : "Patient"}
-                            </div>
-                            <p className="text-gray-900">{segment.text}</p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-gray-500 italic">No transcript available yet. Start recording to see transcription.</p>
-                    )}
-                  </div>
-                )}
-
-                {activeTab === "context" && (
-                  <div className="space-y-6">
-                    {/* Vital Signs */}
-                    <div className="border border-gray-200 rounded-lg p-6">
-                      <h3 className="font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                        <span>🩺</span>
-                        <span>Vital Signs</span>
-                      </h3>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        {/* Blood Pressure */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Blood Pressure (mmHg)
-                          </label>
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="number"
-                              value={vitalSigns.bloodPressureSystolic}
-                              onChange={(e) => setVitalSigns({ ...vitalSigns, bloodPressureSystolic: e.target.value })}
-                              placeholder="120"
-                              className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                            <span className="text-gray-500">/</span>
-                            <input
-                              type="number"
-                              value={vitalSigns.bloodPressureDiastolic}
-                              onChange={(e) => setVitalSigns({ ...vitalSigns, bloodPressureDiastolic: e.target.value })}
-                              placeholder="80"
-                              className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Heart Rate */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Heart Rate (bpm)
-                          </label>
-                          <input
-                            type="number"
-                            value={vitalSigns.heartRate}
-                            onChange={(e) => setVitalSigns({ ...vitalSigns, heartRate: e.target.value })}
-                            placeholder="72"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-
-                        {/* Temperature */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Temperature (°F)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={vitalSigns.temperature}
-                            onChange={(e) => setVitalSigns({ ...vitalSigns, temperature: e.target.value })}
-                            placeholder="98.6"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-
-                        {/* Respiratory Rate */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Respiratory Rate (breaths/min)
-                          </label>
-                          <input
-                            type="number"
-                            value={vitalSigns.respiratoryRate}
-                            onChange={(e) => setVitalSigns({ ...vitalSigns, respiratoryRate: e.target.value })}
-                            placeholder="16"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-
-                        {/* Oxygen Saturation */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Oxygen Saturation (%)
-                          </label>
-                          <input
-                            type="number"
-                            value={vitalSigns.oxygenSaturation}
-                            onChange={(e) => setVitalSigns({ ...vitalSigns, oxygenSaturation: e.target.value })}
-                            placeholder="98"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-
-                        {/* Weight */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Weight (kg)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={vitalSigns.weight}
-                            onChange={(e) => setVitalSigns({ ...vitalSigns, weight: e.target.value })}
-                            placeholder="70"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-
-                        {/* Height */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Height (cm)
-                          </label>
-                          <input
-                            type="number"
-                            value={vitalSigns.height}
-                            onChange={(e) => setVitalSigns({ ...vitalSigns, height: e.target.value })}
-                            placeholder="170"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-
-                        {/* BMI Calculation */}
-                        {vitalSigns.weight && vitalSigns.height && (
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              BMI
-                            </label>
-                            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 font-medium">
-                              {(parseFloat(vitalSigns.weight) / Math.pow(parseFloat(vitalSigns.height) / 100, 2)).toFixed(1)}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="mt-4 flex items-center justify-between">
-                        <button
-                          onClick={() => setVitalSigns({
-                            bloodPressureSystolic: '',
-                            bloodPressureDiastolic: '',
-                            heartRate: '',
-                            temperature: '',
-                            respiratoryRate: '',
-                            oxygenSaturation: '',
-                            weight: '',
-                            height: '',
-                          })}
-                          className="text-sm text-gray-600 hover:text-gray-800"
-                        >
-                          Clear All
-                        </button>
-                        <button
-                          onClick={saveVitalSigns}
-                          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
-                        >
-                          Save Vital Signs
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Quick Actions */}
-                    <div className="border border-gray-200 rounded-lg p-6">
-                      <h3 className="font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                        <span>⚡</span>
-                        <span>Quick Actions</span>
-                      </h3>
-                      
-                      <div className="grid grid-cols-2 gap-3">
-                        <button className="px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2">
-                          <span>💊</span>
-                          <span>Add Medication</span>
-                        </button>
-                        <button className="px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2">
-                          <span>🔬</span>
-                          <span>Order Lab Test</span>
-                        </button>
-                        <button className="px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2">
-                          <span>📋</span>
-                          <span>Add Diagnosis</span>
-                        </button>
-                        <button className="px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2">
-                          <span>📅</span>
-                          <span>Schedule Follow-up</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Patient History */}
-                    <div className="border border-gray-200 rounded-lg p-6">
-                      <h3 className="font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                        <span>📖</span>
-                        <span>Patient History</span>
-                      </h3>
-                      
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Allergies
-                          </label>
-                          <textarea
-                            placeholder="List any known allergies..."
-                            rows={2}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Current Medications
-                          </label>
-                          <textarea
-                            placeholder="List current medications..."
-                            rows={2}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Past Medical History
-                          </label>
-                          <textarea
-                            placeholder="Previous conditions, surgeries..."
-                            rows={2}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === "entities" && (
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-gray-900">Clinical Entities</h3>
-                      <button
-                        onClick={extractClinicalEntities}
-                        disabled={extractingEntities || transcriptSegments.length === 0}
-                        className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center space-x-1 disabled:opacity-50"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        <span>{extractingEntities ? 'Extracting...' : 'Refresh'}</span>
-                      </button>
-                    </div>
-
-                    {extractingEntities ? (
-                      <div className="text-center py-12">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-                        <p className="text-gray-500 text-sm">Analyzing transcript...</p>
-                      </div>
-                    ) : soapElements ? (
-                      <div className="space-y-6">
-                        {/* SOAP Elements */}
-                        {(['subjective', 'objective', 'assessment', 'plan'] as const).map((section) => (
-                          <div key={section} className="border border-gray-200 rounded-lg p-4">
-                            <h4 className="font-semibold text-gray-900 mb-3 capitalize flex items-center space-x-2">
-                              <span>{section === 'subjective' ? '🗣️' : section === 'objective' ? '🔬' : section === 'assessment' ? '🎯' : '📋'}</span>
-                              <span>{section}</span>
-                              <span className="text-xs text-gray-500 font-normal">
-                                ({soapElements[section].length} entities)
-                              </span>
-                            </h4>
-                            {soapElements[section].length > 0 ? (
-                              <div className="flex flex-wrap gap-2">
-                                {soapElements[section].map((entity, idx) => (
-                                  <div
-                                    key={idx}
-                                    className={`px-3 py-1.5 rounded-lg border text-sm ${clinicalEntityExtractor.getEntityColor(entity.type)}`}
-                                  >
-                                    <div className="flex items-center space-x-2">
-                                      <span className="font-medium">{entity.value}</span>
-                                      <span className={`text-xs ${clinicalEntityExtractor.getConfidenceColor(entity.confidence)}`}>
-                                        {Math.round(entity.confidence * 100)}%
-                                      </span>
-                                    </div>
-                                    <div className="text-xs opacity-75 mt-0.5 capitalize">{entity.type.replace('-', ' ')}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-sm text-gray-500 italic">No {section} entities found</p>
-                            )}
-                          </div>
-                        ))}
-
-                        {/* Legend */}
-                        <div className="border-t border-gray-200 pt-4">
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Entity Types:</h4>
-                          <div className="flex flex-wrap gap-2">
-                            {(['symptom', 'diagnosis', 'medication', 'procedure', 'vital-sign', 'lab-value'] as const).map((type) => (
-                              <div key={type} className={`px-2 py-1 rounded text-xs ${clinicalEntityExtractor.getEntityColor(type)}`}>
-                                {type.replace('-', ' ')}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-12">
-                        <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                        </svg>
-                        <p className="text-gray-500 text-sm">No clinical entities extracted yet</p>
-                        <p className="text-gray-400 text-xs mt-1">Start recording to extract medical entities</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Bottom Input Area */}
-        <div className="bg-white border-t border-gray-200 p-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex items-center space-x-3">
-              <button className="p-2 text-gray-400 hover:text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                </svg>
-              </button>
-              <input
-                type="text"
-                placeholder="Ask AI Saboo to do anything..."
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+            <div className="flex-1 overflow-y-auto p-2">
+              <RecentSessionsList
+                sessionManager={sessionManager}
+                onSessionSelect={(id) => navigate(`/session/${id}`)}
+                refreshTrigger={sessionListRefresh}
               />
-              <button className="p-2 text-gray-400 hover:text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
+            </div>
+            <div className="p-4 border-t border-gray-200 space-y-2">
+              <button className="w-full text-left px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded flex items-center space-x-2">
+                <span>📋</span>
+                <span>Template library</span>
+              </button>
+              <button
+                onClick={() => navigate("/settings")}
+                className="w-full text-left px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded flex items-center space-x-2"
+              >
+                <span>⚙️</span>
+                <span>Settings</span>
               </button>
             </div>
-            <p className="text-xs text-orange-500 mt-2 text-center flex items-center justify-center space-x-1">
-              <span>⚠️</span>
-              <span>Review your note before use to ensure it accurately represents the visit</span>
-            </p>
-          </div>
+          </aside>
+
+          {/* Main content */}
+          <main className="flex-1 flex flex-col min-w-0">
+            <HeaderBar
+              patientDetails={patientDetails}
+              onPatientDetailsChange={handlePatientDetailsChange}
+              onResume={() => showToast("Resume feature coming soon", "info")}
+              isRecording={isRecording}
+              duration={duration}
+              onToggleRecording={handleVoiceInput}
+              onUploadAudio={handleUploadAudio}
+            />
+
+            <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
+
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+              {renderTabContent()}
+            </div>
+
+            {/* Mobile-only supplements */}
+            <div className="lg:hidden px-4 pb-4 space-y-4">
+              <section className="bg-white border border-gray-200 rounded-lg">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                  <h2 className="text-sm font-semibold text-gray-900">Sessions</h2>
+                  <button
+                    onClick={handleNewSessionClick}
+                    className="flex items-center space-x-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                  >
+                    <span className="text-base leading-none">⊕</span>
+                    <span>New</span>
+                  </button>
+                </div>
+                <div className="max-h-64 overflow-y-auto p-2">
+                  <RecentSessionsList
+                    sessionManager={sessionManager}
+                    onSessionSelect={(id) => navigate(`/session/${id}`)}
+                    refreshTrigger={sessionListRefresh}
+                  />
+                </div>
+              </section>
+
+              <TasksPanel
+                sessionId={session?.id}
+                tasks={tasks}
+                onTasksChange={setTasks}
+                variant="mobile"
+              />
+            </div>
+
+            <div className="border-t border-gray-200 bg-white px-4 py-4">
+              <AIInputBar
+                onSendMessage={handleAIMessage}
+                onVoiceInput={handleVoiceInput}
+                disabled={false}
+                isRecording={isRecording}
+              />
+            </div>
+          </main>
+
+          {/* Desktop tasks */}
+          <aside className="hidden lg:flex lg:w-80 bg-white border-l border-gray-200">
+            <TasksPanel
+              sessionId={session?.id}
+              tasks={tasks}
+              onTasksChange={setTasks}
+              variant="desktop"
+            />
+          </aside>
         </div>
+
+        <RecordingButton
+          isRecording={isRecording}
+          onToggle={handleVoiceInput}
+          duration={duration}
+        />
       </div>
-    </div>
+    </>
   );
 };

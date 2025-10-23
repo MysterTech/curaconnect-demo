@@ -87,10 +87,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   };
 
   return (
-    <div className="bg-white border-b border-gray-200 px-6 py-3">
-      <div className="flex items-center justify-between">
+    <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         {/* Left: Patient Details */}
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-wrap items-center gap-3">
           {isEditing ? (
             <div className="flex items-center space-x-2">
               <input
@@ -139,12 +139,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-nowrap">
           {/* Recording Button with Dropdown */}
           {isRecording ? (
             <button
               onClick={onToggleRecording}
-              className="flex items-center space-x-2 px-5 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 shadow-lg transition-all"
+              className="flex items-center space-x-2 px-5 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 shadow-lg transition-all whitespace-nowrap"
             >
               <div className="w-3 h-3 bg-white rounded-sm"></div>
               <div className="flex flex-col items-start">
@@ -157,7 +157,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               <div className="flex">
                 <button
                   onClick={onToggleRecording}
-                  className="flex items-center space-x-2 px-5 py-2.5 bg-green-600 text-white rounded-l-lg text-sm font-medium hover:bg-green-700 shadow-lg transition-all"
+                  className="flex items-center space-x-2 px-5 py-2.5 bg-green-600 text-white rounded-l-lg text-sm font-medium hover:bg-green-700 shadow-lg transition-all whitespace-nowrap"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
@@ -166,7 +166,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 </button>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="px-3 py-2.5 bg-green-600 text-white rounded-r-lg text-sm font-medium hover:bg-green-700 border-l border-green-500 shadow-lg transition-all"
+                  className="px-3 py-2.5 bg-green-600 text-white rounded-r-lg text-sm font-medium hover:bg-green-700 border-l border-green-500 shadow-lg transition-all whitespace-nowrap"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -205,7 +205,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           
           <button
             onClick={onResume}
-            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
+            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 whitespace-nowrap"
           >
             Resume
           </button>
