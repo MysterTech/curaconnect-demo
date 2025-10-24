@@ -1160,11 +1160,14 @@ export class SessionManager implements SessionManagerInterface {
           // Get current audio chunk from recording controller
           const audioChunk = await this.recordingController.getAudioChunk();
           
-          // Only transcribe if we have new audio (at least 50KB more than last time)
-          const MIN_NEW_AUDIO_SIZE = 50000; // 50KB minimum
+          // Only transcribe if we have a meaningful amount of new audio
+          const dynamicThreshold = Math.max(
+            4000,
+            Math.round(audioChunk.size * 0.3)
+          );
           const newAudioSize = audioChunk.size - this.lastTranscribedAudioSize;
           
-          if (audioChunk && audioChunk.size > 0 && newAudioSize >= MIN_NEW_AUDIO_SIZE) {
+          if (audioChunk && audioChunk.size > 0 && newAudioSize >= dynamicThreshold) {
             console.log(`📤 Transcribing ${audioChunk.size} bytes with Gemini (${newAudioSize} bytes new)...`);
             this.lastTranscribedAudioSize = audioChunk.size;
             
@@ -1186,6 +1189,12 @@ export class SessionManager implements SessionManagerInterface {
               console.log(`📝 Transcript updated: ${beforeCount} → ${afterCount} segments`);
               
               this.activeSession.updatedAt = new Date();
+
+              try {
+                await this.storageService.saveSession(this.activeSession);
+              } catch (saveError) {
+                console.warn('⚠️ Failed to persist transcript update:', saveError);
+              }
               
               // Notify UI of new transcription
               console.log(`📢 Notifying ${this.transcriptUpdateCallbacks.length} transcript callbacks`);
@@ -1212,7 +1221,7 @@ export class SessionManager implements SessionManagerInterface {
               }
             }
           } else if (audioChunk && audioChunk.size > 0) {
-            console.log(`⚠️ Audio chunk too small (${newAudioSize} bytes new, need ${MIN_NEW_AUDIO_SIZE}), waiting for more audio...`);
+            console.log(`⚠️ Audio chunk too small (${newAudioSize} bytes new, need ${dynamicThreshold}), waiting for more audio...`);
           } else {
             console.log('⚠️ No audio chunk available yet');
           }

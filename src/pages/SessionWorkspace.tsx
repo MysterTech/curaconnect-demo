@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Session } from "../models/types";
 import { SessionManager } from "../services/SessionManager";
 import { StorageService } from "../services/StorageService";
@@ -95,7 +95,10 @@ const RecentSessionsList: React.FC<{
 };
 
 export const SessionWorkspace: React.FC = () => {
-  const { sessionId } = useParams<{ sessionId: string }>();
+  const params = useParams<{ sessionId?: string }>();
+  const location = useLocation();
+  const sessionId =
+    params.sessionId ?? (location.pathname.endsWith("/session/new") ? "new" : undefined);
   const navigate = useNavigate();
   const { showToast, ToastContainer } = useToast();
 
@@ -132,6 +135,33 @@ export const SessionWorkspace: React.FC = () => {
 
   // Session list refresh trigger
   const [sessionListRefresh, setSessionListRefresh] = useState(0);
+  const CURRENT_SESSION_KEY = "current_session_id";
+
+  const lastPersistedSessionIdRef = useRef<string | null>(null);
+  const lastPersistedTranscriptRef = useRef<string>("");
+  const hasAutoCreatedRouteSessionRef = useRef(false);
+
+  const getCurrentSessionId = useCallback((): string | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      return localStorage.getItem(CURRENT_SESSION_KEY);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const setCurrentSessionId = useCallback((id: string | null) => {
+    if (typeof window === "undefined") return;
+    try {
+      if (id) {
+        localStorage.setItem(CURRENT_SESSION_KEY, id);
+      } else {
+        localStorage.removeItem(CURRENT_SESSION_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
 
   // Services
   const [recordingController] = useState(
@@ -148,51 +178,110 @@ export const SessionWorkspace: React.FC = () => {
   );
 
   // Define createNewSession before useEffect so it can be called
-  const createNewSession = React.useCallback(async () => {
-    console.log("🔨 createNewSession called");
+  const createNewSession = useCallback(
+    async (
+      options: { showToast?: boolean; refreshList?: boolean } = {}
+    ) => {
+      const { showToast: shouldToast = true, refreshList = true } = options;
+      console.log("🔨 createNewSession called");
 
-    if (isCreatingSession) {
-      console.log("⚠️ Already creating a session, skipping");
-      return;
-    }
-
-    setIsCreatingSession(true);
-    try {
-      const newSession = await sessionManager.createSession({
-        identifier: "",
-        visitType: "consultation",
-      });
-      console.log("✅ Session created:", newSession.id);
-      setSession(newSession);
-
-      // Load default template for new session
-      const defaultTemplateId = userSettingsService.getDefaultTemplate();
-      if (defaultTemplateId) {
-        const userSpecialty = userSettingsService.getSpecialty();
-        const templates = getTemplatesBySpecialty(userSpecialty);
-        const defaultTemplate = templates.find(
-          (t) => t.id === defaultTemplateId
-        );
-        if (defaultTemplate) {
-          console.log(
-            "📋 Setting default template for new session:",
-            defaultTemplate.name
-          );
-          setSelectedTemplate(defaultTemplate);
-        }
+      if (isCreatingSession) {
+        console.log("⚠️ Already creating a session, skipping");
+        return;
       }
 
-      // Mark tasks as loaded for new session to enable auto-save
-      setTasksLoaded(true);
+      setIsCreatingSession(true);
+      try {
+        const newSession = await sessionManager.createSession({
+          identifier: "",
+          visitType: "consultation",
+        });
+        console.log("✅ Session created:", newSession.id);
+        setSession({
+          ...newSession,
+          transcript: [...(newSession.transcript ?? [])],
+        });
+        setCurrentSessionId(newSession.id);
+        setPatientDetails("");
+        setTasks([]);
+        setTasksLoaded(true);
+        setVitalSigns({});
+        setGeneratedNote("");
 
-      navigate(`/session/${newSession.id}`, { replace: true });
-    } catch (error) {
-      console.error("❌ Failed to create session:", error);
-      showToast("Failed to create session", "error");
-    } finally {
-      setIsCreatingSession(false);
-    }
-  }, [sessionManager, navigate, showToast, isCreatingSession]);
+        // Load default template for new session
+        const defaultTemplateId = userSettingsService.getDefaultTemplate();
+        if (defaultTemplateId) {
+          const userSpecialty = userSettingsService.getSpecialty();
+          const templates = getTemplatesBySpecialty(userSpecialty);
+          const defaultTemplate = templates.find(
+            (t) => t.id === defaultTemplateId
+          );
+          if (defaultTemplate) {
+            console.log(
+              "📋 Setting default template for new session:",
+              defaultTemplate.name
+            );
+            setSelectedTemplate(defaultTemplate);
+          }
+        }
+
+        // Mark tasks as loaded for new session to enable auto-save
+        setTasksLoaded(true);
+
+        navigate(`/session/${newSession.id}`, { replace: true });
+        if (refreshList) {
+          setSessionListRefresh((prev) => prev + 1);
+        }
+        if (shouldToast) {
+          showToast("New session created", "success");
+        }
+      } catch (error) {
+        console.error("❌ Failed to create session:", error);
+        showToast("Failed to create session", "error");
+      } finally {
+        setIsCreatingSession(false);
+      }
+    },
+    [sessionManager, navigate, showToast, isCreatingSession, setCurrentSessionId]
+  );
+
+  const loadSession = useCallback(
+    async (id: string, { silentRefresh = false } = {}) => {
+      try {
+        const loadedSession = await sessionManager.getSession(id);
+        setSession({
+          ...loadedSession,
+          transcript: [...(loadedSession.transcript ?? [])],
+        });
+
+        const shouldBeRecording = loadedSession.status === "active";
+        setIsRecording(shouldBeRecording);
+        if (!shouldBeRecording) {
+          setRecordingStartTime(null);
+          setDuration("00:00");
+        }
+
+        setPatientDetails(loadedSession.patientContext?.identifier || "");
+        setGeneratedNote(loadedSession.documentation?.clinicalNote || "");
+        setVitalSigns(
+          loadedSession.documentation?.soapNote?.objective?.vitalSigns || {}
+        );
+        setTasks(loadedSession.metadata?.tasks || []);
+
+        setTasksLoaded(true);
+
+        if (!silentRefresh) {
+          setSessionListRefresh((prev) => prev + 1);
+        }
+      } catch (error) {
+        console.error("Failed to load session:", error);
+        if (!silentRefresh) {
+          showToast("Failed to load session", "error");
+        }
+      }
+    },
+    [sessionManager, showToast]
+  );
 
   // Initialize
   useEffect(() => {
@@ -205,26 +294,39 @@ export const SessionWorkspace: React.FC = () => {
       isCreatingSession
     );
 
-    // Skip if we're currently creating a session
     if (isCreatingSession) {
       console.log("⏳ Session creation in progress, skipping initialization");
       return;
     }
 
-    // Only proceed if we don't already have this session loaded
-    if (session && session.id === sessionId) {
-      console.log("✅ Session already loaded, skipping initialization");
-      return;
+    if (sessionId !== "new") {
+      hasAutoCreatedRouteSessionRef.current = false;
     }
 
-    if (sessionId && sessionId !== "new") {
-      // Load existing session
+    if (sessionId === "new") {
+      console.log("🆕 /session/new detected - auto-creating session");
+      if (!hasAutoCreatedRouteSessionRef.current && !isCreatingSession) {
+        hasAutoCreatedRouteSessionRef.current = true;
+        void createNewSession({ showToast: true, refreshList: true });
+      }
+    } else if (sessionId && session && session.id === sessionId) {
+      setCurrentSessionId(sessionId);
+      console.log("✅ Session already loaded, skipping initialization");
+    } else if (sessionId && sessionId !== "new") {
       console.log("📂 Loading existing session:", sessionId);
-      loadSession(sessionId);
-    } else if (sessionId === "new" || !sessionId) {
-      // Auto-create session when navigating to /session/new OR when no sessionId
-      console.log("🆕 Auto-creating new session (sessionId:", sessionId, ")");
-      createNewSession();
+      setCurrentSessionId(sessionId);
+      loadSession(sessionId, { silentRefresh: true });
+    } else {
+      const currentId = getCurrentSessionId();
+
+      if (currentId) {
+        console.log("🔁 Redirecting to current session:", currentId);
+        navigate(`/session/${currentId}`, { replace: true });
+      } else {
+        console.log("ℹ️ No existing session. Awaiting user to create one.");
+        setSession(null);
+        setCurrentSessionId(null);
+      }
     }
 
     // Load templates
@@ -252,7 +354,17 @@ export const SessionWorkspace: React.FC = () => {
         console.warn("⚠️ Saved default template not found:", defaultTemplateId);
       }
     }
-  }, [sessionId]);
+  }, [
+    sessionId,
+    isCreatingSession,
+    session,
+    loadSession,
+    createNewSession,
+    getCurrentSessionId,
+    setCurrentSessionId,
+    navigate,
+    selectedTemplate
+  ]);
 
   // Update duration timer
   useEffect(() => {
@@ -327,92 +439,67 @@ export const SessionWorkspace: React.FC = () => {
     }
   }, [tasks, session, tasksLoaded]);
 
-  const handleNewSessionClick = async () => {
-    console.log("🔘 New session button clicked");
-
-    if (isCreatingSession) {
-      console.log("⚠️ Already creating a session, ignoring click");
+  // Persist transcript changes so switching sessions always hydrates latest segments
+  useEffect(() => {
+    if (!session) {
+      lastPersistedSessionIdRef.current = null;
+      lastPersistedTranscriptRef.current = "";
       return;
     }
 
-    // Always create a fresh session when button is clicked
-    setIsCreatingSession(true);
-    try {
-      const newSession = await sessionManager.createSession({
-        identifier: "",
-        visitType: "consultation",
-      });
-      console.log("✅ Session created from button click:", newSession.id);
-      setSession(newSession);
+    const segments = session.transcript ?? [];
+    const fingerprint =
+      segments.length === 0
+        ? `${session.id}::empty`
+        : segments
+            .map(
+              (segment) =>
+                `${segment.id}:${segment.timestamp}:${segment.speaker}:${segment.text.length}`
+            )
+            .join("|");
 
-      // Load default template for new session
-      const defaultTemplateId = userSettingsService.getDefaultTemplate();
-      if (defaultTemplateId) {
-        const userSpecialty = userSettingsService.getSpecialty();
-        const templates = getTemplatesBySpecialty(userSpecialty);
-        const defaultTemplate = templates.find(
-          (t) => t.id === defaultTemplateId
-        );
-        if (defaultTemplate) {
-          console.log(
-            "📋 Setting default template for new session:",
-            defaultTemplate.name
-          );
-          setSelectedTemplate(defaultTemplate);
+    const sessionChanged =
+      session.id !== lastPersistedSessionIdRef.current;
+
+    if (sessionChanged) {
+      lastPersistedSessionIdRef.current = session.id;
+      lastPersistedTranscriptRef.current = "";
+    }
+
+    if (segments.length === 0) {
+      lastPersistedTranscriptRef.current = fingerprint;
+      return;
+    }
+
+    if (fingerprint === lastPersistedTranscriptRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const persistTranscript = async () => {
+      try {
+        const storage = new StorageService();
+        await storage.updateSession(session.id, {
+          transcript: segments.map((segment) => ({ ...segment })),
+        });
+        if (!cancelled) {
+          lastPersistedTranscriptRef.current = fingerprint;
         }
+      } catch (error) {
+        console.error("Failed to persist transcript:", error);
       }
+    };
 
-      // Mark tasks as loaded for new session to enable auto-save
-      setTasksLoaded(true);
+    persistTranscript();
 
-      navigate(`/session/${newSession.id}`, { replace: true });
-      showToast("New session created", "success");
-    } catch (error) {
-      console.error("Failed to create session:", error);
-      showToast("Failed to create session", "error");
-    } finally {
-      setIsCreatingSession(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
-  const loadSession = async (id: string) => {
-    try {
-      const loadedSession = await sessionManager.getSession(id);
-      setSession(loadedSession);
-
-      // Sync recording state with loaded session
-      const shouldBeRecording = loadedSession.status === "active";
-      setIsRecording(shouldBeRecording);
-      if (!shouldBeRecording) {
-        setRecordingStartTime(null);
-        setDuration("00:00");
-      }
-
-      if (loadedSession.patientContext?.identifier) {
-        setPatientDetails(loadedSession.patientContext.identifier);
-      }
-      if (loadedSession.documentation?.clinicalNote) {
-        setGeneratedNote(loadedSession.documentation.clinicalNote);
-      }
-
-      // Load vital signs if available
-      if (loadedSession.documentation?.soapNote?.objective?.vitalSigns) {
-        setVitalSigns(
-          loadedSession.documentation.soapNote.objective.vitalSigns
-        );
-      }
-
-      // Load tasks from session metadata
-      if (loadedSession.metadata?.tasks) {
-        setTasks(loadedSession.metadata.tasks);
-      }
-
-      // Mark tasks as loaded to enable auto-save
-      setTasksLoaded(true);
-    } catch (error) {
-      console.error("Failed to load session:", error);
-      showToast("Failed to load session", "error");
-    }
+  const handleNewSessionClick = async () => {
+    await createNewSession({ showToast: true, refreshList: true });
   };
 
   const handlePatientDetailsChange = async (details: string) => {
@@ -516,7 +603,10 @@ export const SessionWorkspace: React.FC = () => {
         );
       }
 
-      setSession(updatedSession);
+      setSession({
+        ...updatedSession,
+        transcript: [...(updatedSession.transcript ?? [])],
+      });
 
       // Analyze transcript to extract tasks and vital signs, then auto-generate note
       if (updatedSession.transcript && updatedSession.transcript.length > 0) {

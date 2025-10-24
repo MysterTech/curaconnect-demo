@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useToast } from './Toast';
 
 interface VitalSigns {
@@ -19,6 +19,10 @@ interface ContextViewProps {
 export const ContextView: React.FC<ContextViewProps> = ({ vitalSigns, onVitalSignsUpdate }) => {
   const [vitals, setVitals] = useState<VitalSigns>(vitalSigns);
   const { showToast } = useToast();
+
+  useEffect(() => {
+    setVitals(vitalSigns);
+  }, [vitalSigns]);
 
   const handleSave = () => {
     onVitalSignsUpdate(vitals);
