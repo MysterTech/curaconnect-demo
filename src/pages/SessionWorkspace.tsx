@@ -143,6 +143,8 @@ export const SessionWorkspace: React.FC = () => {
   const currentViewSessionIdRef = useRef<string | undefined>(sessionId);
   currentViewSessionIdRef.current = sessionId;
 
+  const [recordingActionPending, setRecordingActionPending] = useState(false);
+
   const getCurrentSessionId = useCallback((): string | null => {
     if (typeof window === "undefined") return null;
     try {
@@ -394,10 +396,39 @@ export const SessionWorkspace: React.FC = () => {
   // Session update listener
   useEffect(() => {
     const handleSessionUpdate = (updatedSession: Session) => {
+      if (updatedSession.id !== currentViewSessionIdRef.current) {
+        console.log(
+          "🔁 Received update for non-active session, ignoring in UI:",
+          updatedSession.id
+        );
+        return;
+      }
+
       setSession({
         ...updatedSession,
         transcript: [...updatedSession.transcript],
       });
+
+      if (
+        Array.isArray(updatedSession.metadata?.tasks)
+      ) {
+        const normalizedTasks = updatedSession.metadata.tasks.map((task) => ({
+          ...task,
+          createdAt:
+            task.createdAt instanceof Date
+              ? task.createdAt
+              : new Date(task.createdAt),
+        }));
+        setTasks(normalizedTasks);
+      }
+
+      if (
+        updatedSession.documentation?.soapNote?.objective?.vitalSigns
+      ) {
+        setVitalSigns(
+          updatedSession.documentation.soapNote.objective.vitalSigns
+        );
+      }
 
       // Sync recording state with session status
       const shouldBeRecording = updatedSession.status === "active";
@@ -537,7 +568,7 @@ export const SessionWorkspace: React.FC = () => {
   };
 
   const handleStartRecording = async () => {
-    if (!session) return;
+    if (!session || recordingActionPending) return;
 
     // Check if already recording
     if (isRecording) {
@@ -546,9 +577,18 @@ export const SessionWorkspace: React.FC = () => {
     }
 
     try {
+      setRecordingActionPending(true);
       await sessionManager.startSession(session.id);
       setIsRecording(true);
       setRecordingStartTime(Date.now());
+      setSession((prev) =>
+        prev && prev.id === session.id
+          ? {
+              ...prev,
+              status: "active",
+            }
+          : prev
+      );
       showToast("Recording started", "success");
     } catch (error) {
       console.error("Failed to start recording:", error);
@@ -556,11 +596,13 @@ export const SessionWorkspace: React.FC = () => {
       setIsRecording(false);
       setRecordingStartTime(null);
       showToast("Failed to start recording", "error");
+    } finally {
+      setRecordingActionPending(false);
     }
   };
 
   const handleStopRecording = async () => {
-    if (!session) {
+    if (!session || recordingActionPending) {
       console.error("❌ No session available");
       return;
     }
@@ -584,12 +626,16 @@ export const SessionWorkspace: React.FC = () => {
       return;
     }
 
+    const previousStartTime = recordingStartTime;
+    const previousDuration = duration;
+
     try {
       console.log("🛑 Stopping recording for session:", sourceSessionId);
-      await sessionManager.stopSession(sourceSessionId);
       setIsRecording(false);
       setRecordingStartTime(null);
       setDuration("00:00");
+      setRecordingActionPending(true);
+      await sessionManager.stopSession(sourceSessionId);
       showToast("Recording stopped", "success");
 
       // Reload session to get updated transcript
@@ -630,12 +676,10 @@ export const SessionWorkspace: React.FC = () => {
           showToast("Analyzing transcript...", "info");
         }
 
-        const analysisPromise = analyzeTranscript(
-          fullTranscript,
-          sourceSessionId
-        );
+        const asyncTasks: Promise<void>[] = [
+          analyzeTranscript(fullTranscript, sourceSessionId),
+        ];
 
-        let notePromise: Promise<void> = Promise.resolve();
         if (
           selectedTemplate &&
           currentViewSessionIdRef.current === sourceSessionId
@@ -645,13 +689,23 @@ export const SessionWorkspace: React.FC = () => {
             selectedTemplate.name
           );
           showToast("Generating note...", "info");
-          notePromise = generateNoteFromTranscript(
-            fullTranscript,
-            sourceSessionId
+          asyncTasks.push(
+            generateNoteFromTranscript(fullTranscript, sourceSessionId)
           );
         }
 
-        await Promise.all([analysisPromise, notePromise]);
+        const results = await Promise.allSettled(asyncTasks);
+        results.forEach((result, index) => {
+          if (result.status === "rejected") {
+            console.error(
+              `❌ Post-stop async task #${index + 1} failed:`,
+              result.reason
+            );
+            if (currentViewSessionIdRef.current === sourceSessionId) {
+              showToast("Some post-processing failed", "error");
+            }
+          }
+        });
       } else if (currentViewSessionIdRef.current === sourceSessionId) {
         console.warn("⚠️ No transcript found after stopping recording");
         showToast("No transcript was recorded", "warning");
@@ -659,10 +713,12 @@ export const SessionWorkspace: React.FC = () => {
     } catch (error) {
       console.error("Failed to stop recording:", error);
       // Reset state even on error to prevent stuck UI
-      setIsRecording(false);
-      setRecordingStartTime(null);
-      setDuration("00:00");
+      setIsRecording(true);
+      setRecordingStartTime(previousStartTime ?? Date.now());
+      setDuration(previousDuration);
       showToast("Failed to stop recording", "error");
+    } finally {
+      setRecordingActionPending(false);
     }
   };
 
@@ -768,12 +824,10 @@ export const SessionWorkspace: React.FC = () => {
           fullTranscript.substring(0, 100) + "..."
         );
 
-        const analysisPromise = analyzeTranscript(
-          fullTranscript,
-          sourceSessionId
-        );
+        const asyncTasks: Promise<void>[] = [
+          analyzeTranscript(fullTranscript, sourceSessionId),
+        ];
 
-        let notePromise: Promise<void> = Promise.resolve();
         if (
           selectedTemplate &&
           currentViewSessionIdRef.current === sourceSessionId
@@ -783,13 +837,23 @@ export const SessionWorkspace: React.FC = () => {
             selectedTemplate.name
           );
           showToast("Generating note...", "info");
-          notePromise = generateNoteFromTranscript(
-            fullTranscript,
-            sourceSessionId
+          asyncTasks.push(
+            generateNoteFromTranscript(fullTranscript, sourceSessionId)
           );
         }
 
-        await Promise.all([analysisPromise, notePromise]);
+        const results = await Promise.allSettled(asyncTasks);
+        results.forEach((result, index) => {
+          if (result.status === "rejected") {
+            console.error(
+              `❌ Upload post-processing task #${index + 1} failed:`,
+              result.reason
+            );
+            if (currentViewSessionIdRef.current === sourceSessionId) {
+              showToast("Some post-processing failed", "error");
+            }
+          }
+        });
       } else if (currentViewSessionIdRef.current === sourceSessionId) {
         console.warn("⚠️ No segments in transcription result");
         showToast("No speech detected in audio file", "error");
@@ -1150,6 +1214,11 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
   };
 
   const handleVoiceInput = () => {
+    if (recordingActionPending) {
+      console.log("⚠️ Recording action already in progress, ignoring toggle");
+      return;
+    }
+
     if (isRecording) {
       handleStopRecording();
     } else {
@@ -1302,7 +1371,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
               <AIInputBar
                 onSendMessage={handleAIMessage}
                 onVoiceInput={handleVoiceInput}
-                disabled={false}
+                disabled={recordingActionPending}
                 isRecording={isRecording}
               />
             </div>
@@ -1323,6 +1392,7 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
           isRecording={isRecording}
           onToggle={handleVoiceInput}
           duration={duration}
+          disabled={recordingActionPending}
         />
       </div>
     </>

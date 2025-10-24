@@ -528,11 +528,28 @@ export class SessionManager implements SessionManagerInterface {
   async stopSession(sessionId: string): Promise<void> {
     try {
       if (!this.activeSession || this.activeSession.id !== sessionId) {
-        throw new Error("Session is not currently active");
+        console.warn(
+          "⚠️ Requested stop for session that is not marked active. Attempting recovery...",
+          { requested: sessionId, active: this.activeSession?.id }
+        );
+        const recoveredSession = await this.storageService.getSession(sessionId);
+        if (!recoveredSession) {
+          throw new Error("Session is not currently active");
+        }
+        this.activeSession = recoveredSession;
       }
 
       // Stop recording and get final audio
-      const audioBlob = await this.recordingController.stopRecording();
+      let audioBlob: Blob | null = null;
+      let recordingState = this.recordingController.getState();
+      try {
+        audioBlob = await this.recordingController.stopRecording();
+        recordingState = this.recordingController.getState();
+      } catch (stopError) {
+        recordingState = this.recordingController.getState();
+        console.warn("⚠️ Recording controller stop failed:", stopError);
+        audioBlob = null;
+      }
 
       // Stop real-time transcription
       if (this.config.enableRealTimeTranscription) {
@@ -558,6 +575,8 @@ export class SessionManager implements SessionManagerInterface {
           console.warn("Failed to transcribe final audio:", error);
           // Keep any real-time transcription we already have
         }
+      } else {
+        console.warn("⚠️ No final audio captured; keeping existing transcript data");
       }
 
       // Generate final documentation
@@ -574,7 +593,6 @@ export class SessionManager implements SessionManagerInterface {
       }
 
       // Update session status and metadata
-      const recordingState = this.recordingController.getState();
       this.activeSession.status = "completed";
       this.activeSession.updatedAt = new Date();
       this.activeSession.metadata.duration = recordingState.duration;

@@ -4,24 +4,29 @@ interface RecordingButtonProps {
   isRecording: boolean;
   onToggle: () => void;
   duration?: string;
+  disabled?: boolean;
 }
 
 export const RecordingButton: React.FC<RecordingButtonProps> = ({
   isRecording,
   onToggle,
   duration = '00:00',
+  disabled = false,
 }) => {
+  const interactionClasses = disabled ? 'opacity-70 cursor-not-allowed' : 'hover:scale-105';
+  const colorClasses = isRecording
+    ? `${disabled ? 'bg-red-500' : 'bg-red-600 hover:bg-red-700'} text-white`
+    : `${disabled ? 'bg-indigo-500' : 'bg-indigo-600 hover:bg-indigo-700'} text-white`;
+
   return (
     <div className="fixed bottom-24 right-8 z-50">
       <button
         onClick={onToggle}
+        disabled={disabled}
         className={`
           group relative flex items-center space-x-3 px-6 py-4 rounded-full shadow-lg
-          transition-all duration-200 transform hover:scale-105
-          ${isRecording 
-            ? 'bg-red-600 hover:bg-red-700 text-white' 
-            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-          }
+          transition-all duration-200 transform ${interactionClasses}
+          ${colorClasses}
         `}
       >
         {isRecording ? (
