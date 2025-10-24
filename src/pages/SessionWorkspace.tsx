@@ -140,6 +140,8 @@ export const SessionWorkspace: React.FC = () => {
   const lastPersistedSessionIdRef = useRef<string | null>(null);
   const lastPersistedTranscriptRef = useRef<string>("");
   const hasAutoCreatedRouteSessionRef = useRef(false);
+  const currentViewSessionIdRef = useRef<string | undefined>(sessionId);
+  currentViewSessionIdRef.current = sessionId;
 
   const getCurrentSessionId = useCallback((): string | null => {
     if (typeof window === "undefined") return null;
@@ -563,6 +565,8 @@ export const SessionWorkspace: React.FC = () => {
       return;
     }
 
+    const sourceSessionId = session.id;
+
     // Check if actually recording before trying to stop
     if (!isRecording) {
       console.log("⚠️ Not recording, skipping stop");
@@ -581,8 +585,8 @@ export const SessionWorkspace: React.FC = () => {
     }
 
     try {
-      console.log("🛑 Stopping recording for session:", session.id);
-      await sessionManager.stopSession(session.id);
+      console.log("🛑 Stopping recording for session:", sourceSessionId);
+      await sessionManager.stopSession(sourceSessionId);
       setIsRecording(false);
       setRecordingStartTime(null);
       setDuration("00:00");
@@ -590,7 +594,7 @@ export const SessionWorkspace: React.FC = () => {
 
       // Reload session to get updated transcript
       console.log("📥 Reloading session to get updated transcript...");
-      const updatedSession = await sessionManager.getSession(session.id);
+      const updatedSession = await sessionManager.getSession(sourceSessionId);
       console.log(
         "📊 Updated session transcript length:",
         updatedSession.transcript?.length || 0
@@ -603,10 +607,12 @@ export const SessionWorkspace: React.FC = () => {
         );
       }
 
-      setSession({
-        ...updatedSession,
-        transcript: [...(updatedSession.transcript ?? [])],
-      });
+      if (currentViewSessionIdRef.current === sourceSessionId) {
+        setSession({
+          ...updatedSession,
+          transcript: [...(updatedSession.transcript ?? [])],
+        });
+      }
 
       // Analyze transcript to extract tasks and vital signs, then auto-generate note
       if (updatedSession.transcript && updatedSession.transcript.length > 0) {
@@ -620,19 +626,33 @@ export const SessionWorkspace: React.FC = () => {
         );
 
         // First analyze for tasks and vital signs
-        showToast("Analyzing transcript...", "info");
-        await analyzeTranscript(fullTranscript);
+        if (currentViewSessionIdRef.current === sourceSessionId) {
+          showToast("Analyzing transcript...", "info");
+        }
 
-        // Then auto-generate note if template is selected
-        if (selectedTemplate) {
+        const analysisPromise = analyzeTranscript(
+          fullTranscript,
+          sourceSessionId
+        );
+
+        let notePromise: Promise<void> = Promise.resolve();
+        if (
+          selectedTemplate &&
+          currentViewSessionIdRef.current === sourceSessionId
+        ) {
           console.log(
             "📝 Auto-generating note with template:",
             selectedTemplate.name
           );
           showToast("Generating note...", "info");
-          await generateNoteFromTranscript(fullTranscript);
+          notePromise = generateNoteFromTranscript(
+            fullTranscript,
+            sourceSessionId
+          );
         }
-      } else {
+
+        await Promise.all([analysisPromise, notePromise]);
+      } else if (currentViewSessionIdRef.current === sourceSessionId) {
         console.warn("⚠️ No transcript found after stopping recording");
         showToast("No transcript was recorded", "warning");
       }
@@ -657,13 +677,16 @@ export const SessionWorkspace: React.FC = () => {
     }
 
     try {
+      const sourceSessionId = session.id;
       console.log(
         "📤 Processing uploaded audio file:",
         file.name,
         file.type,
         file.size
       );
-      showToast("Converting audio format...", "info");
+      if (currentViewSessionIdRef.current === sourceSessionId) {
+        showToast("Converting audio format...", "info");
+      }
 
       // Convert audio to WAV format for maximum Gemini compatibility
       const { audioConverter } = await import("../utils/audioConverter");
@@ -679,7 +702,9 @@ export const SessionWorkspace: React.FC = () => {
         try {
           audioBlob = await audioConverter.convertToWav(file);
           console.log("✅ Audio converted to WAV:", audioBlob.size, "bytes");
-          showToast("Audio converted successfully", "success");
+          if (currentViewSessionIdRef.current === sourceSessionId) {
+            showToast("Audio converted successfully", "success");
+          }
         } catch (conversionError) {
           console.warn(
             "⚠️ Conversion failed, using original file:",
@@ -699,7 +724,9 @@ export const SessionWorkspace: React.FC = () => {
         audioBlob = new Blob([arrayBuffer], { type: file.type });
       }
 
-      showToast("Transcribing audio...", "info");
+      if (currentViewSessionIdRef.current === sourceSessionId) {
+        showToast("Transcribing audio...", "info");
+      }
 
       // Use Gemini transcription service directly
       const { GeminiTranscriptionService } = await import(
@@ -720,15 +747,19 @@ export const SessionWorkspace: React.FC = () => {
           ...session,
           transcript: [...session.transcript, ...result.segments],
         };
-        setSession(updatedSession);
+        if (currentViewSessionIdRef.current === sourceSessionId) {
+          setSession(updatedSession);
+        }
 
         // Save to storage
         const storage = new StorageService();
-        await storage.updateSession(session.id, {
+        await storage.updateSession(sourceSessionId, {
           transcript: updatedSession.transcript,
         });
 
-        showToast(`Transcribed ${result.segments.length} segments`, "success");
+        if (currentViewSessionIdRef.current === sourceSessionId) {
+          showToast(`Transcribed ${result.segments.length} segments`, "success");
+        }
 
         // Analyze the transcript and auto-generate note
         const fullTranscript = result.segments.map((s) => s.text).join(" ");
@@ -737,19 +768,29 @@ export const SessionWorkspace: React.FC = () => {
           fullTranscript.substring(0, 100) + "..."
         );
 
-        // First analyze for tasks and vital signs
-        await analyzeTranscript(fullTranscript);
+        const analysisPromise = analyzeTranscript(
+          fullTranscript,
+          sourceSessionId
+        );
 
-        // Then auto-generate note if template is selected
-        if (selectedTemplate) {
+        let notePromise: Promise<void> = Promise.resolve();
+        if (
+          selectedTemplate &&
+          currentViewSessionIdRef.current === sourceSessionId
+        ) {
           console.log(
             "📝 Auto-generating note with template:",
             selectedTemplate.name
           );
           showToast("Generating note...", "info");
-          await generateNoteFromTranscript(fullTranscript);
+          notePromise = generateNoteFromTranscript(
+            fullTranscript,
+            sourceSessionId
+          );
         }
-      } else {
+
+        await Promise.all([analysisPromise, notePromise]);
+      } else if (currentViewSessionIdRef.current === sourceSessionId) {
         console.warn("⚠️ No segments in transcription result");
         showToast("No speech detected in audio file", "error");
       }
@@ -760,30 +801,39 @@ export const SessionWorkspace: React.FC = () => {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
 
-      if (errorMessage.includes("500") || errorMessage.includes("INTERNAL")) {
-        showToast(
-          "Gemini API error: This audio format may not be fully supported. Try converting to WAV or MP3 format.",
-          "error"
-        );
-      } else if (errorMessage.includes("400")) {
-        showToast(
-          "Invalid audio file. Please ensure the file is a valid audio recording.",
-          "error"
-        );
-      } else {
-        showToast(`Failed to process audio file: ${errorMessage}`, "error");
+      if (currentViewSessionIdRef.current === sourceSessionId) {
+        if (errorMessage.includes("500") || errorMessage.includes("INTERNAL")) {
+          showToast(
+            "Gemini API error: This audio format may not be fully supported. Try converting to WAV or MP3 format.",
+            "error"
+          );
+        } else if (errorMessage.includes("400")) {
+          showToast(
+            "Invalid audio file. Please ensure the file is a valid audio recording.",
+            "error"
+          );
+        } else {
+          showToast(`Failed to process audio file: ${errorMessage}`, "error");
+        }
       }
     }
   };
 
-  const generateNoteFromTranscript = async (transcriptText: string) => {
+  const generateNoteFromTranscript = async (
+    transcriptText: string,
+    targetSessionId: string
+  ) => {
     if (!selectedTemplate) {
       console.warn("⚠️ No template selected for note generation");
       return;
     }
 
     try {
-      setGeneratingNote(true);
+      const isViewingTarget =
+        currentViewSessionIdRef.current === targetSessionId;
+      if (isViewingTarget) {
+        setGeneratingNote(true);
+      }
       console.log("🤖 Generating note using template:", selectedTemplate.name);
 
       // Create prompt for AI
@@ -865,57 +915,80 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
         .trim();
 
       console.log("✅ Note generated successfully");
-      setGeneratedNote(generatedText);
-      showToast("Note generated successfully!", "success");
+      if (isViewingTarget && currentViewSessionIdRef.current === targetSessionId) {
+        setGeneratedNote(generatedText);
+        showToast("Note generated successfully!", "success");
 
-      // Auto-switch to Note tab to show the generated note
-      setActiveTab("note");
+        // Auto-switch to Note tab to show the generated note
+        setActiveTab("note");
+      } else {
+        console.log(
+          "ℹ️ Skipping note UI update because user navigated away from session",
+          targetSessionId
+        );
+      }
     } catch (error) {
       console.error("❌ Failed to generate note:", error);
-      showToast("Failed to generate note", "error");
+      if (isViewingTarget && currentViewSessionIdRef.current === targetSessionId) {
+        showToast("Failed to generate note", "error");
+      }
     } finally {
-      setGeneratingNote(false);
+      if (isViewingTarget) {
+        setGeneratingNote(false);
+      }
     }
   };
 
-  const analyzeTranscript = async (transcriptText: string) => {
+  const analyzeTranscript = async (
+    transcriptText: string,
+    targetSessionId: string
+  ) => {
     try {
       console.log("🔍 Analyzing transcript for tasks and vital signs...");
       const analysis = await transcriptAnalyzer.analyzeTranscript(
         transcriptText
       );
+      const storage = new StorageService();
+      const targetSession = await storage.getSession(targetSessionId);
+
+      if (!targetSession) {
+        console.warn(
+          "⚠️ Target session not found while analyzing transcript:",
+          targetSessionId
+        );
+        return;
+      }
+
+      const shouldSyncUI =
+        currentViewSessionIdRef.current === targetSessionId;
+
+      let documentationUpdate: Session["documentation"] | undefined;
+      let metadataUpdate: Session["metadata"] | undefined;
+      let newTasks: Task[] | undefined;
 
       // Update vital signs if found
       if (analysis.vitalSigns && Object.keys(analysis.vitalSigns).length > 0) {
         console.log("✅ Extracted vital signs:", analysis.vitalSigns);
-        setVitalSigns(analysis.vitalSigns);
-
-        // Save to session
-        if (session) {
-          const storage = new StorageService();
-          await storage.updateSession(session.id, {
-            documentation: {
-              ...session.documentation,
-              soapNote: {
-                ...session.documentation.soapNote,
-                objective: {
-                  ...session.documentation.soapNote.objective,
-                  vitalSigns: analysis.vitalSigns,
-                },
-              },
+        documentationUpdate = {
+          ...targetSession.documentation,
+          soapNote: {
+            ...targetSession.documentation.soapNote,
+            objective: {
+              ...targetSession.documentation.soapNote.objective,
+              vitalSigns: analysis.vitalSigns,
             },
-          });
+          },
+        };
+
+        if (shouldSyncUI) {
+          setVitalSigns(analysis.vitalSigns);
         }
-        showToast(
-          `Extracted ${Object.keys(analysis.vitalSigns).length} vital signs`,
-          "success"
-        );
       }
 
       // Update tasks if found
       if (analysis.tasks && analysis.tasks.length > 0) {
         console.log("✅ Extracted tasks:", analysis.tasks);
-        const newTasks: Task[] = analysis.tasks.map((task, index) => ({
+        const initialNewTasks = analysis.tasks.map((task, index) => ({
           id: `task-${Date.now()}-${index}`,
           text: task.text,
           completed: false,
@@ -923,14 +996,76 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
           category: task.category,
           createdAt: new Date(),
         }));
-        setTasks(newTasks);
-        showToast(`Created ${newTasks.length} tasks`, "success");
+        const existingTasks = Array.isArray(
+          targetSession.metadata?.tasks
+        )
+          ? targetSession.metadata.tasks
+          : [];
+        const dedupedNewTasks = initialNewTasks.filter(
+          (task) =>
+            !existingTasks.some(
+              (existing) =>
+                existing.text.toLowerCase() === task.text.toLowerCase()
+            )
+        );
+        const enrichedNewTasks = dedupedNewTasks.map((task, idx) => ({
+          ...task,
+          id: task.id ?? `task-${targetSessionId}-${Date.now()}-${idx}`,
+          createdAt: task.createdAt ?? new Date(),
+        }));
+        const mergedTasks = [...existingTasks, ...enrichedNewTasks];
+        newTasks = enrichedNewTasks;
+
+        if (newTasks.length === 0 && analysis.tasks.length > 0) {
+          console.log("ℹ️ All suggested tasks already exist, skipping add.");
+        }
+
+        metadataUpdate = {
+          ...targetSession.metadata,
+          tasks: mergedTasks,
+        };
+
+        if (shouldSyncUI) {
+          setTasks(mergedTasks);
+        }
+      }
+      // Persist updates if needed
+      if (documentationUpdate || metadataUpdate) {
+        await storage.updateSession(targetSessionId, {
+          ...(documentationUpdate ? { documentation: documentationUpdate } : {}),
+          ...(metadataUpdate ? { metadata: metadataUpdate } : {}),
+        });
+
+        if (shouldSyncUI) {
+          setSession((prev) => {
+            if (!prev || prev.id !== targetSessionId) return prev;
+            return {
+              ...prev,
+              documentation: documentationUpdate ?? prev.documentation,
+              metadata: metadataUpdate ?? prev.metadata,
+            };
+          });
+        }
+      }
+
+      if (shouldSyncUI) {
+        if (analysis.vitalSigns && Object.keys(analysis.vitalSigns).length > 0) {
+          showToast(
+            `Extracted ${Object.keys(analysis.vitalSigns).length} vital signs`,
+            "success"
+          );
+        }
+        if (newTasks && newTasks.length > 0) {
+          showToast(`Created ${newTasks.length} tasks`, "success");
+        }
       }
 
       console.log("✅ Transcript analysis complete");
     } catch (error) {
       console.error("❌ Failed to analyze transcript:", error);
-      showToast("Failed to analyze transcript", "error");
+      if (currentViewSessionIdRef.current === targetSessionId) {
+        showToast("Failed to analyze transcript", "error");
+      }
     }
   };
 
@@ -948,62 +1083,13 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
       return;
     }
 
-    try {
-      setGeneratingNote(true);
+    const targetSessionId = session.id;
 
-      const fullTranscript = session.transcript
-        .map((seg) => `${seg.speaker}: ${seg.text}`)
-        .join("\n");
+    const fullTranscript = session.transcript
+      .map((seg) => `${seg.speaker}: ${seg.text}`)
+      .join("\n");
 
-      const prompt = `You are a medical documentation assistant. Extract information from the consultation transcript and organize it into a structured medical note.
-
-CRITICAL RULES:
-1. ONLY include information explicitly mentioned in the transcript
-2. DO NOT make up, infer, or hallucinate any medical information
-3. If a section has no relevant information, write "Not documented"
-4. Be accurate and conservative - when in doubt, leave it out
-
-Template: ${selectedTemplate.name}
-${selectedTemplate.aiPrompt}
-
-Transcript:
-${fullTranscript}
-
-Generate a medical note with these sections:
-${selectedTemplate.sections.map((s) => `${s.title}:`).join("\n")}`;
-
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.1,
-              topP: 0.8,
-              topK: 20,
-            },
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const generatedText = data.candidates[0].content.parts[0].text.trim();
-
-      setGeneratedNote(generatedText);
-      showToast("Note generated successfully", "success");
-    } catch (error) {
-      console.error("Failed to generate note:", error);
-      showToast("Failed to generate note", "error");
-    } finally {
-      setGeneratingNote(false);
-    }
+    await generateNoteFromTranscript(fullTranscript, targetSessionId);
   };
 
   const handleSaveNote = async () => {
