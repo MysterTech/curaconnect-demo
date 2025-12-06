@@ -143,6 +143,11 @@ export const SessionWorkspace: React.FC = () => {
   const currentViewSessionIdRef = useRef<string | undefined>(sessionId);
   currentViewSessionIdRef.current = sessionId;
 
+  const sessionRef = useRef<Session | null>(null);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
   const [recordingActionPending, setRecordingActionPending] = useState(false);
 
   const getCurrentSessionId = useCallback((): string | null => {
@@ -288,12 +293,39 @@ export const SessionWorkspace: React.FC = () => {
   );
 
   // Initialize
+  // Load templates - run only once on mount
+  useEffect(() => {
+    const userSpecialty = userSettingsService.getSpecialty();
+    const templates = getTemplatesBySpecialty(userSpecialty);
+    setAvailableTemplates(templates);
+    console.log(
+      "📚 Loaded",
+      templates.length,
+      "templates for specialty:",
+      userSpecialty
+    );
+
+    // Set default template from user settings
+    const defaultTemplateId = userSettingsService.getDefaultTemplate();
+    if (defaultTemplateId) {
+      const defaultTemplate = templates.find((t) => t.id === defaultTemplateId);
+      if (defaultTemplate) {
+        console.log(
+          "📋 Setting default template from settings:",
+          defaultTemplate.name
+        );
+        setSelectedTemplate(defaultTemplate);
+      } else {
+        console.warn("⚠️ Saved default template not found:", defaultTemplateId);
+      }
+    }
+  }, []);
+
+  // Initialize Session
   useEffect(() => {
     console.log(
       "🔄 Initialize effect triggered, sessionId:",
       sessionId,
-      "session:",
-      session?.id,
       "isCreatingSession:",
       isCreatingSession
     );
@@ -313,7 +345,7 @@ export const SessionWorkspace: React.FC = () => {
         hasAutoCreatedRouteSessionRef.current = true;
         void createNewSession({ showToast: true, refreshList: true });
       }
-    } else if (sessionId && session && session.id === sessionId) {
+    } else if (sessionId && sessionRef.current && sessionRef.current.id === sessionId) {
       setCurrentSessionId(sessionId);
       console.log("✅ Session already loaded, skipping initialization");
     } else if (sessionId && sessionId !== "new") {
@@ -332,42 +364,14 @@ export const SessionWorkspace: React.FC = () => {
         setCurrentSessionId(null);
       }
     }
-
-    // Load templates
-    const userSpecialty = userSettingsService.getSpecialty();
-    const templates = getTemplatesBySpecialty(userSpecialty);
-    setAvailableTemplates(templates);
-    console.log(
-      "📚 Loaded",
-      templates.length,
-      "templates for specialty:",
-      userSpecialty
-    );
-
-    // Set default template from user settings
-    const defaultTemplateId = userSettingsService.getDefaultTemplate();
-    if (defaultTemplateId && !selectedTemplate) {
-      const defaultTemplate = templates.find((t) => t.id === defaultTemplateId);
-      if (defaultTemplate) {
-        console.log(
-          "📋 Setting default template from settings:",
-          defaultTemplate.name
-        );
-        setSelectedTemplate(defaultTemplate);
-      } else {
-        console.warn("⚠️ Saved default template not found:", defaultTemplateId);
-      }
-    }
   }, [
     sessionId,
     isCreatingSession,
-    session,
     loadSession,
     createNewSession,
     getCurrentSessionId,
     setCurrentSessionId,
-    navigate,
-    selectedTemplate
+    navigate
   ]);
 
   // Update duration timer
@@ -450,13 +454,23 @@ export const SessionWorkspace: React.FC = () => {
   // Save tasks to storage whenever they change
   useEffect(() => {
     const saveTasks = async () => {
-      if (!session || !tasksLoaded) return;
+      const currentSession = sessionRef.current;
+      if (!currentSession || !tasksLoaded) return;
+
+      // Check if tasks are actually different from what's in the session
+      // to avoid infinite loops when session updates trigger task updates
+      const currentTasks = currentSession.metadata?.tasks || [];
+
+      // Simple JSON comparison to avoid unnecessary saves/loops
+      if (JSON.stringify(currentTasks) === JSON.stringify(tasks)) {
+        return;
+      }
 
       try {
         const storage = new StorageService();
-        await storage.updateSession(session.id, {
+        await storage.updateSession(currentSession.id, {
           metadata: {
-            ...session.metadata,
+            ...currentSession.metadata,
             tasks: tasks,
           },
         });
@@ -466,11 +480,11 @@ export const SessionWorkspace: React.FC = () => {
       }
     };
 
-    // Only save if we have a session and tasks have been loaded (not initial render)
-    if (session && tasksLoaded) {
+    // Only save if tasks have been loaded (not initial render)
+    if (tasksLoaded) {
       saveTasks();
     }
-  }, [tasks, session, tasksLoaded]);
+  }, [tasks, tasksLoaded]);
 
   // Persist transcript changes so switching sessions always hydrates latest segments
   useEffect(() => {
@@ -485,11 +499,11 @@ export const SessionWorkspace: React.FC = () => {
       segments.length === 0
         ? `${session.id}::empty`
         : segments
-            .map(
-              (segment) =>
-                `${segment.id}:${segment.timestamp}:${segment.speaker}:${segment.text.length}`
-            )
-            .join("|");
+          .map(
+            (segment) =>
+              `${segment.id}:${segment.timestamp}:${segment.speaker}:${segment.text.length}`
+          )
+          .join("|");
 
     const sessionChanged =
       session.id !== lastPersistedSessionIdRef.current;
@@ -584,9 +598,9 @@ export const SessionWorkspace: React.FC = () => {
       setSession((prev) =>
         prev && prev.id === session.id
           ? {
-              ...prev,
-              status: "active",
-            }
+            ...prev,
+            status: "active",
+          }
           : prev
       );
       showToast("Recording started", "success");
@@ -732,8 +746,8 @@ export const SessionWorkspace: React.FC = () => {
       return;
     }
 
+    const sourceSessionId = session.id;
     try {
-      const sourceSessionId = session.id;
       console.log(
         "📤 Processing uploaded audio file:",
         file.name,
@@ -892,9 +906,10 @@ export const SessionWorkspace: React.FC = () => {
       return;
     }
 
+    const isViewingTarget =
+      currentViewSessionIdRef.current === targetSessionId;
+
     try {
-      const isViewingTarget =
-        currentViewSessionIdRef.current === targetSessionId;
       if (isViewingTarget) {
         setGeneratingNote(true);
       }
@@ -919,17 +934,16 @@ ${transcriptText}
 
 Generate a medical note with these sections (only fill in what's actually mentioned):
 ${selectedTemplate.sections
-  .map(
-    (s) => `
+          .map(
+            (s) => `
 ${s.title}:
-${
-  s.required
-    ? '(Required - extract from transcript if available, otherwise write "Not documented")'
-    : "(Optional - only include if mentioned in transcript)"
-}
+${s.required
+                ? '(Required - extract from transcript if available, otherwise write "Not documented")'
+                : "(Optional - only include if mentioned in transcript)"
+              }
 `
-  )
-  .join("\n")}
+          )
+          .join("\n")}
 
 Remember: Accuracy over completeness. Only document what was actually said.`;
 
