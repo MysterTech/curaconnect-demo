@@ -17,6 +17,13 @@ export interface Session {
 export interface PatientContext {
   identifier?: string;
   visitType?: string;
+  specialtyContext?: {
+    ophthalmology?: {
+      lastEyeExam?: Date;
+      glasses?: boolean;
+      contacts?: boolean;
+    };
+  };
 }
 
 export interface TranscriptSegment {
@@ -66,6 +73,7 @@ export interface SubjectiveSection {
 
 export interface ObjectiveSection {
   vitalSigns?: VitalSigns;
+  eyeExam?: EyeExamData;
   physicalExam?: string;
 }
 
@@ -89,6 +97,35 @@ export interface VitalSigns {
   oxygenSaturation?: number;
   weight?: number;
   height?: number;
+}
+
+export interface EyeExamData {
+  visualAcuity?: {
+    left?: string;
+    right?: string;
+    both?: string;
+  };
+  intraocularPressure?: {
+    left?: string;
+    right?: string;
+  };
+  pupils?: {
+    left?: string;
+    right?: string;
+  };
+  extraocularMovements?: string;
+  confrontationFields?: string;
+  slitLampExam?: {
+    anteriorSegment?: string;
+    lens?: string;
+    cornea?: string;
+  };
+  fundusExam?: {
+    opticDisc?: string;
+    macula?: string;
+    vessels?: string;
+    periphery?: string;
+  };
 }
 
 export interface Medication {

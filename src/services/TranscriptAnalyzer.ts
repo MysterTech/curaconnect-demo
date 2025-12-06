@@ -3,6 +3,8 @@
  * Uses Gemini AI to extract tasks, vital signs, and other clinical data
  */
 
+import { EyeExamData } from "../models/types";
+
 export interface ExtractedVitalSigns {
   bloodPressure?: string;
   heartRate?: number;
@@ -21,6 +23,7 @@ export interface ExtractedTask {
 
 export interface TranscriptAnalysisResult {
   vitalSigns: ExtractedVitalSigns;
+  eyeExam?: EyeExamData;
   tasks: ExtractedTask[];
   chiefComplaint?: string;
   diagnosis?: string[];
@@ -54,16 +57,25 @@ Extract the following information in JSON format:
    - weight (number in lbs)
    - height (number in inches)
 
-2. TASKS (action items for the provider):
+2. EYE EXAM (if mentioned - for ophthalmology consultations):
+   - visualAcuity: { left, right, both } (e.g., "20/20", "6/6")
+   - intraocularPressure: { left, right } (e.g., "15 mmHg")
+   - pupils: { left, right } (e.g., "PERRLA", "3mm reactive")
+   - extraocularMovements (e.g., "Full in all directions")
+   - confrontationFields (e.g., "Full to confrontation")
+   - slitLampExam: { anteriorSegment, lens, cornea }
+   - fundusExam: { opticDisc, macula, vessels, periphery }
+
+3. TASKS (action items for the provider):
    - Prescriptions to write
    - Follow-up appointments to schedule
    - Tests to order
    - Referrals to make
    - Any other action items
 
-3. CHIEF COMPLAINT (main reason for visit)
+4. CHIEF COMPLAINT (main reason for visit)
 
-4. DIAGNOSES (if mentioned)
+5. DIAGNOSES (if mentioned)
 
 RULES:
 - ONLY extract information explicitly mentioned in the transcript
@@ -83,6 +95,34 @@ Return ONLY valid JSON in this exact format:
     "oxygenSaturation": 98,
     "weight": 150,
     "height": 68
+  },
+  "eyeExam": {
+    "visualAcuity": {
+      "left": "20/20",
+      "right": "20/25",
+      "both": "20/20"
+    },
+    "intraocularPressure": {
+      "left": "15 mmHg",
+      "right": "16 mmHg"
+    },
+    "pupils": {
+      "left": "PERRLA",
+      "right": "PERRLA"
+    },
+    "extraocularMovements": "Full in all directions",
+    "confrontationFields": "Full to confrontation",
+    "slitLampExam": {
+      "anteriorSegment": "Clear",
+      "lens": "Clear",
+      "cornea": "Clear"
+    },
+    "fundusExam": {
+      "opticDisc": "Sharp margins, cup-to-disc ratio 0.3",
+      "macula": "Normal foveal reflex",
+      "vessels": "Normal caliber",
+      "periphery": "No tears or holes"
+    }
   },
   "tasks": [
     {
@@ -126,12 +166,19 @@ If no information is found for a section, return an empty object/array for that 
 
       const data = await response.json();
       const resultText = data.candidates[0].content.parts[0].text;
-      
+
+      console.log('🔍 Gemini raw response:', resultText);
+
       // Parse JSON response
       const result = JSON.parse(resultText);
-      
+
+      console.log('📊 Parsed result:', result);
+      console.log('💉 Vital signs:', result.vitalSigns);
+      console.log('👁️ Eye exam:', result.eyeExam);
+
       return {
         vitalSigns: result.vitalSigns || {},
+        eyeExam: result.eyeExam,
         tasks: result.tasks || [],
         chiefComplaint: result.chiefComplaint,
         diagnosis: result.diagnosis || []

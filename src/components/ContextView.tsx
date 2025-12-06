@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from './Toast';
+import { EyeExamData } from '../models/types';
 
 interface VitalSigns {
   bloodPressure?: string;
@@ -13,24 +14,56 @@ interface VitalSigns {
 
 interface ContextViewProps {
   vitalSigns: VitalSigns;
+  eyeExam?: EyeExamData;
   onVitalSignsUpdate: (vitals: VitalSigns) => void;
+  onEyeExamUpdate?: (eyeExam: EyeExamData) => void;
 }
 
-export const ContextView: React.FC<ContextViewProps> = ({ vitalSigns, onVitalSignsUpdate }) => {
+export const ContextView: React.FC<ContextViewProps> = ({
+  vitalSigns,
+  eyeExam,
+  onVitalSignsUpdate,
+  onEyeExamUpdate
+}) => {
   const [vitals, setVitals] = useState<VitalSigns>(vitalSigns);
+  const [eyeExamData, setEyeExamData] = useState<EyeExamData>(eyeExam || {});
   const { showToast } = useToast();
 
   useEffect(() => {
     setVitals(vitalSigns);
   }, [vitalSigns]);
 
+  useEffect(() => {
+    setEyeExamData(eyeExam || {});
+  }, [eyeExam]);
+
   const handleSave = () => {
     onVitalSignsUpdate(vitals);
-    showToast('Vital signs saved successfully!', 'success');
+    if (onEyeExamUpdate) {
+      onEyeExamUpdate(eyeExamData);
+    }
+    showToast('Patient context saved successfully!', 'success');
   };
 
   const handleChange = (field: keyof VitalSigns, value: string | number) => {
     setVitals(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleEyeExamChange = (path: string[], value: string) => {
+    setEyeExamData(prev => {
+      const newData = { ...prev };
+      let current: any = newData;
+
+      for (let i = 0; i < path.length - 1; i++) {
+        if (!current[path[i]]) {
+          current[path[i]] = {};
+        }
+        current = current[path[i]];
+      }
+
+      current[path[path.length - 1]] = value;
+      return newData;
+    });
   };
 
   return (
@@ -139,12 +172,188 @@ export const ContextView: React.FC<ContextViewProps> = ({ vitalSigns, onVitalSig
             </div>
           </div>
 
+          {/* Eye Examination Section */}
+          <div>
+            <h4 className="text-sm font-medium text-gray-900 mb-4">Eye Examination</h4>
+
+            {/* Visual Acuity */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-700 mb-2">Visual Acuity</label>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <input
+                    type="text"
+                    value={eyeExamData.visualAcuity?.left || ''}
+                    onChange={(e) => handleEyeExamChange(['visualAcuity', 'left'], e.target.value)}
+                    placeholder="Left (e.g., 20/20)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    value={eyeExamData.visualAcuity?.right || ''}
+                    onChange={(e) => handleEyeExamChange(['visualAcuity', 'right'], e.target.value)}
+                    placeholder="Right (e.g., 20/25)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    value={eyeExamData.visualAcuity?.both || ''}
+                    onChange={(e) => handleEyeExamChange(['visualAcuity', 'both'], e.target.value)}
+                    placeholder="Both (e.g., 20/20)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Intraocular Pressure */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-700 mb-2">Intraocular Pressure</label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <input
+                    type="text"
+                    value={eyeExamData.intraocularPressure?.left || ''}
+                    onChange={(e) => handleEyeExamChange(['intraocularPressure', 'left'], e.target.value)}
+                    placeholder="Left (e.g., 15 mmHg)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    value={eyeExamData.intraocularPressure?.right || ''}
+                    onChange={(e) => handleEyeExamChange(['intraocularPressure', 'right'], e.target.value)}
+                    placeholder="Right (e.g., 16 mmHg)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Pupils */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-700 mb-2">Pupils</label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <input
+                    type="text"
+                    value={eyeExamData.pupils?.left || ''}
+                    onChange={(e) => handleEyeExamChange(['pupils', 'left'], e.target.value)}
+                    placeholder="Left (e.g., PERRLA)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    value={eyeExamData.pupils?.right || ''}
+                    onChange={(e) => handleEyeExamChange(['pupils', 'right'], e.target.value)}
+                    placeholder="Right (e.g., PERRLA)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Extraocular Movements */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-700 mb-2">Extraocular Movements</label>
+              <input
+                type="text"
+                value={eyeExamData.extraocularMovements || ''}
+                onChange={(e) => handleEyeExamChange(['extraocularMovements'], e.target.value)}
+                placeholder="e.g., Full in all directions"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            {/* Confrontation Fields */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-700 mb-2">Confrontation Fields</label>
+              <input
+                type="text"
+                value={eyeExamData.confrontationFields || ''}
+                onChange={(e) => handleEyeExamChange(['confrontationFields'], e.target.value)}
+                placeholder="e.g., Full to confrontation"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            {/* Slit Lamp Exam */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-700 mb-2">Slit Lamp Exam</label>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={eyeExamData.slitLampExam?.anteriorSegment || ''}
+                  onChange={(e) => handleEyeExamChange(['slitLampExam', 'anteriorSegment'], e.target.value)}
+                  placeholder="Anterior Segment"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <input
+                  type="text"
+                  value={eyeExamData.slitLampExam?.lens || ''}
+                  onChange={(e) => handleEyeExamChange(['slitLampExam', 'lens'], e.target.value)}
+                  placeholder="Lens"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <input
+                  type="text"
+                  value={eyeExamData.slitLampExam?.cornea || ''}
+                  onChange={(e) => handleEyeExamChange(['slitLampExam', 'cornea'], e.target.value)}
+                  placeholder="Cornea"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            {/* Fundus Exam */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-700 mb-2">Fundus Exam</label>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={eyeExamData.fundusExam?.opticDisc || ''}
+                  onChange={(e) => handleEyeExamChange(['fundusExam', 'opticDisc'], e.target.value)}
+                  placeholder="Optic Disc"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <input
+                  type="text"
+                  value={eyeExamData.fundusExam?.macula || ''}
+                  onChange={(e) => handleEyeExamChange(['fundusExam', 'macula'], e.target.value)}
+                  placeholder="Macula"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <input
+                  type="text"
+                  value={eyeExamData.fundusExam?.vessels || ''}
+                  onChange={(e) => handleEyeExamChange(['fundusExam', 'vessels'], e.target.value)}
+                  placeholder="Vessels"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <input
+                  type="text"
+                  value={eyeExamData.fundusExam?.periphery || ''}
+                  onChange={(e) => handleEyeExamChange(['fundusExam', 'periphery'], e.target.value)}
+                  placeholder="Periphery"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Save Button */}
           <button
             onClick={handleSave}
             className="w-full px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700"
           >
-            Save Vital Signs
+            Save Patient Context
           </button>
 
           {/* Additional Context Sections */}

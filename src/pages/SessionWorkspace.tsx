@@ -132,6 +132,7 @@ export const SessionWorkspace: React.FC = () => {
 
   // Vital signs state
   const [vitalSigns, setVitalSigns] = useState<any>({});
+  const [eyeExam, setEyeExam] = useState<any>({});
 
   // Session list refresh trigger
   const [sessionListRefresh, setSessionListRefresh] = useState(0);
@@ -274,6 +275,9 @@ export const SessionWorkspace: React.FC = () => {
         setGeneratedNote(loadedSession.documentation?.clinicalNote || "");
         setVitalSigns(
           loadedSession.documentation?.soapNote?.objective?.vitalSigns || {}
+        );
+        setEyeExam(
+          loadedSession.documentation?.soapNote?.objective?.eyeExam || {}
         );
         setTasks(loadedSession.metadata?.tasks || []);
 
@@ -431,6 +435,14 @@ export const SessionWorkspace: React.FC = () => {
       ) {
         setVitalSigns(
           updatedSession.documentation.soapNote.objective.vitalSigns
+        );
+      }
+
+      if (
+        updatedSession.documentation?.soapNote?.objective?.eyeExam
+      ) {
+        setEyeExam(
+          updatedSession.documentation.soapNote.objective.eyeExam
         );
       }
 
@@ -1063,6 +1075,25 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
         }
       }
 
+      // Update eye exam if found
+      if (analysis.eyeExam && Object.keys(analysis.eyeExam).length > 0) {
+        console.log("✅ Extracted eye exam data:", analysis.eyeExam);
+        documentationUpdate = {
+          ...(documentationUpdate || targetSession.documentation),
+          soapNote: {
+            ...(documentationUpdate?.soapNote || targetSession.documentation.soapNote),
+            objective: {
+              ...(documentationUpdate?.soapNote?.objective || targetSession.documentation.soapNote.objective),
+              eyeExam: analysis.eyeExam,
+            },
+          },
+        };
+
+        if (shouldSyncUI) {
+          setEyeExam(analysis.eyeExam);
+        }
+      }
+
       // Update tasks if found
       if (analysis.tasks && analysis.tasks.length > 0) {
         console.log("✅ Extracted tasks:", analysis.tasks);
@@ -1130,6 +1161,12 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
         if (analysis.vitalSigns && Object.keys(analysis.vitalSigns).length > 0) {
           showToast(
             `Extracted ${Object.keys(analysis.vitalSigns).length} vital signs`,
+            "success"
+          );
+        }
+        if (analysis.eyeExam && Object.keys(analysis.eyeExam).length > 0) {
+          showToast(
+            "Extracted eye exam data",
             "success"
           );
         }
@@ -1222,6 +1259,29 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
     }
   };
 
+  const handleEyeExamUpdate = async (eyeExamData: any) => {
+    if (!session) return;
+
+    try {
+      const storage = new StorageService();
+      await storage.updateSession(session.id, {
+        documentation: {
+          ...session.documentation,
+          soapNote: {
+            ...session.documentation.soapNote,
+            objective: {
+              ...session.documentation.soapNote.objective,
+              eyeExam: eyeExamData,
+            },
+          },
+        },
+      });
+      setEyeExam(eyeExamData);
+    } catch (error) {
+      console.error("Failed to save eye exam:", error);
+    }
+  };
+
   const handleAIMessage = (message: string) => {
     console.log("AI message:", message);
     showToast("AI assistant coming soon!", "info");
@@ -1256,7 +1316,9 @@ Remember: Accuracy over completeness. Only document what was actually said.`;
         return (
           <ContextView
             vitalSigns={vitalSigns}
+            eyeExam={eyeExam}
             onVitalSignsUpdate={handleVitalSignsUpdate}
+            onEyeExamUpdate={handleEyeExamUpdate}
           />
         );
 
