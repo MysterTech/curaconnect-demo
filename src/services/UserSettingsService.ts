@@ -13,7 +13,7 @@ const SETTINGS_KEY = 'medscribe_user_settings';
 export class UserSettingsService {
   private static instance: UserSettingsService;
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): UserSettingsService {
     if (!UserSettingsService.instance) {
@@ -31,10 +31,10 @@ export class UserSettingsService {
         console.error('Failed to parse user settings:', error);
       }
     }
-    
+
     // Default settings
     return {
-      specialty: 'general-practitioner',
+      specialty: 'ophthalmology',
       defaultTemplate: null,
       name: '',
       credentials: '',

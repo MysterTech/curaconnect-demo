@@ -299,7 +299,14 @@ export const SessionWorkspace: React.FC = () => {
   // Initialize
   // Load templates - run only once on mount
   useEffect(() => {
-    const userSpecialty = userSettingsService.getSpecialty();
+    let userSpecialty = userSettingsService.getSpecialty();
+
+    // Force update to ophthalmology for this demo if still on default
+    if (userSpecialty === 'general-practitioner') {
+      userSpecialty = 'ophthalmology';
+      userSettingsService.setSpecialty('ophthalmology');
+    }
+
     const templates = getTemplatesBySpecialty(userSpecialty);
     setAvailableTemplates(templates);
     console.log(

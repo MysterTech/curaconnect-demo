@@ -3,7 +3,9 @@
  * Based on standard medical documentation practices
  */
 
-export type MedicalSpecialty = 
+import { OPHTHALMOLOGY_TEMPLATES } from './ophthalmology-templates';
+
+export type MedicalSpecialty =
   | 'general-practitioner'
   | 'dentist'
   | 'cardiologist'
@@ -579,6 +581,7 @@ export const ALL_TEMPLATES: NoteTemplate[] = [
   ...CARDIOLOGY_TEMPLATES,
   ...GYNECOLOGY_TEMPLATES,
   ...AYURVEDA_TEMPLATES,
+  ...OPHTHALMOLOGY_TEMPLATES,
   ...PEDIATRICS_TEMPLATES,
 ];
 
